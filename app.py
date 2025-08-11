@@ -581,7 +581,9 @@ ABOUT = """
 
 @app.route("/")
 def index():
-    now_local = datetime.now().replace(second=0, microsecond=0)
+    # Default timezone for the form (user-friendly). Adjust as you like.
+    default_tz = 'America/Denver'
+    now_local = datetime.now(pytz.timezone(default_tz)).replace(second=0, microsecond=0)
     default_dt = now_local.strftime("%Y-%m-%dT%H:%M")
 
     # aspect controls default state
@@ -589,7 +591,7 @@ def index():
     for spec in ASPECTS_DEF:
         aspects.append({"key": spec['key'], "name": spec['name'], "orb": spec['default_orb'], "on": True})
 
-    return render_template_string(LAYOUT, default_dt=default_dt, data=None, aspects=aspects)
+    return render_template_string(LAYOUT, default_dt=default_dt, default_tz=default_tz, data=None, aspects=aspects)
 
 @app.route("/about")
 def about():
