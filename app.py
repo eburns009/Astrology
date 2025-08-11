@@ -1,7 +1,7 @@
 """
-New Astrology Emerging — Switchboard (Local) with Houses + Aspects
+New Astrology Emerging — Switchboard (Local) with Houses + Aspects + Birthplace
 Now supports:
-- Birth time input (user-entered)
+- Birth time (user-entered local time)
 - Birthplace by city (auto geocoding to lat/lon)
 - Auto timezone detection from birthplace (or manual choose)
 - Text listing for planets and aspects (in addition to tables)
@@ -16,6 +16,7 @@ from flask import Flask, request, render_template_string, jsonify
 
 # Skyfield
 from skyfield.api import load, wgs84, Loader
+from skyfield.framelib import ecliptic_frame as ECLIPTIC_FRAME  # <-- fix for ecliptic frame
 
 # Geocoding + timezone lookup
 from geopy.geocoders import Nominatim
@@ -82,7 +83,7 @@ def _is_leap(year: int) -> bool:
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
 
 def fagan_bradley_ayanamsa(dt: datetime) -> float:
-    # Convert to UTC (for polynomial time fraction)
+    # Convert to UTC (for polynomial fraction)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=_tz.utc)
     else:
@@ -128,18 +129,15 @@ def planetary_longitudes(dt: datetime, lat: float, lon: float, elevation_m: floa
         origin = observer
 
     results = {}
-    ecliptic_frame = eph["earth"].ecliptic_frame()
-
     for name, key in PLANETS:
         if key == "earth":
             if not helio:
                 continue
         target = eph[key]
         astrometric = origin.at(t).observe(target)
-        lat_ecl, lon_ecl, distance = astrometric.frame_latlon(ecliptic_frame)
+        lat_ecl, lon_ecl, distance = astrometric.frame_latlon(ECLIPTIC_FRAME)  # <- use imported frame
         lam = normalize_deg(lon_ecl.degrees)
         results[name] = lam
-
     return results
 
 def to_sidereal(longitudes_tropical: dict, dt: datetime) -> dict:
@@ -209,7 +207,6 @@ def asc_mc(dt: datetime, lat_deg: float, lon_deg: float) -> tuple[float, float]:
     if not asc_candidates:
         asc_candidates = [min(samples, key=lambda x: abs(degrees(x[2]) - 90))[0]]
     lam_asc = normalize_deg(asc_candidates[0])
-
     return lam_asc, lam_mc
 
 def equal_house_cusps(asc_deg: float, mode: str = "asc_middle") -> list[float]:
@@ -387,6 +384,15 @@ LAYOUT = """
             <p class="muted">ASC: {{ data['asc_fmt'] }} · MC: {{ data['mc_fmt'] }}</p>
             <p class="muted">Place: {{ data['place'] or '—' }} ({{ data['lat'] }}, {{ data['lon'] }}) · TZ: {{ data['tz'] }}</p>
             <p class="muted">Ayanamsa = {{ data['ayanamsa'] }}° (Fagan/Bradley approx). Time: {{ data['dt_disp'] }} (UTC{{ data['utc_offset'] }})</p>
+
+            <details style="margin-top:8px"><summary class="muted">Notes</summary>
+              <ul class="muted">
+                <li>Birth time accuracy matters — ASC/MC and houses shift quickly.</li>
+                <li>“Auto” timezone comes from birthplace; override it if it looks wrong.</li>
+                <li>If geocoding can’t find the city, enter coordinates under Advanced.</li>
+                <li>Sidereal ayanamsa uses a smooth polynomial; we can swap in Swiss Ephemeris later.</li>
+              </ul>
+            </details>
           </div>
           <div>
             <div class="section-title">Houses (Equal)</div>
@@ -525,7 +531,7 @@ ABOUT = """
 def index():
     # Default dropdown selection uses 'auto' (detect from birthplace)
     default_tz = 'auto'
-    # Just to prefill the input, use a reasonable zone to make a valid datetime-local string
+    # Prefill the datetime-local field with a valid string (any zone works just to seed the control)
     now_local = datetime.now(pytz.timezone('America/Denver')).replace(second=0, microsecond=0)
     default_dt = now_local.strftime("%Y-%m-%dT%H:%M")
 
@@ -543,7 +549,7 @@ def about():
 @app.route("/chart")
 def chart():
     try:
-        # Core form fields
+        # Core fields
         dt_str = request.args.get("dt")
         frame = request.args.get("frame", "geo")
         zodiac = request.args.get("zodiac", "sidereal")
