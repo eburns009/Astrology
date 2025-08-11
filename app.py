@@ -16,7 +16,7 @@ from flask import Flask, request, render_template_string, jsonify
 
 # Skyfield
 from skyfield.api import load, wgs84, Loader
-from skyfield.framelib import ecliptic_frame as ECLIPTIC_FRAME  # <-- fix for ecliptic frame
+from skyfield.framelib import ecliptic_frame as ECLIPTIC_FRAME  # fixed ecliptic frame access
 
 # Geocoding + timezone lookup
 from geopy.geocoders import Nominatim
@@ -125,8 +125,8 @@ def planetary_longitudes(dt: datetime, lat: float, lon: float, elevation_m: floa
     if helio:
         origin = eph["sun"]
     else:
-        observer = wgs84.latlon(latitude_degrees=lat, longitude_degrees=lon, elevation_m=elevation_m)
-        origin = observer
+        topos = wgs84.latlon(latitude_degrees=lat, longitude_degrees=lon, elevation_m=elevation_m)
+        origin = eph["earth"] + topos   # Earth + observer (fix for .observe())
 
     results = {}
     for name, key in PLANETS:
@@ -135,7 +135,7 @@ def planetary_longitudes(dt: datetime, lat: float, lon: float, elevation_m: floa
                 continue
         target = eph[key]
         astrometric = origin.at(t).observe(target)
-        lat_ecl, lon_ecl, distance = astrometric.frame_latlon(ECLIPTIC_FRAME)  # <- use imported frame
+        lat_ecl, lon_ecl, distance = astrometric.frame_latlon(ECLIPTIC_FRAME)
         lam = normalize_deg(lon_ecl.degrees)
         results[name] = lam
     return results
@@ -145,7 +145,7 @@ def to_sidereal(longitudes_tropical: dict, dt: datetime) -> dict:
     return {name: normalize_deg(lon - ay) for name, lon in longitudes_tropical.items()}
 
 # -------- ASC/MC/Houses --------
-OBLIQ_DEG = 23.43929111  # J2000 mean obliquity (good enough for MVP)
+OBLIQ_DEG = 23.43929111  # J2000 mean obliquity
 
 def gmst_hours(dt: datetime) -> float:
     t = get_timescale().from_datetime(dt)
@@ -160,13 +160,13 @@ def asc_mc(dt: datetime, lat_deg: float, lon_deg: float) -> tuple[float, float]:
     """Return (ASC, MC) ecliptic longitudes in degrees."""
     ε = radians(OBLIQ_DEG)
     φ = radians(lat_deg)
-    θ = radians(lst_deg(dt, lon_deg))  # local sidereal angle
+    θ = radians(lst_deg(dt, lon_deg))
 
-    # MC
+    # MC (analytic)
     lam_mc = degrees(atan2(sin(θ), cos(θ)*cos(ε)))
     lam_mc = normalize_deg(lam_mc)
 
-    # ASC via sampling/root-refinement (altitude ≈ 0°, eastern)
+    # ASC via sampling/root-refinement
     def eq_to_altaz(alpha, delta):
         H = (θ - alpha)
         while H > 3.141592653589793: H -= 2*3.141592653589793
