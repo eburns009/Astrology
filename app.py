@@ -344,6 +344,19 @@ LAYOUT = """
           <div>
             <label>Date & time (local)</label>
             <input type=\"datetime-local\" name=\"dt\" value=\"{{ default_dt }}\" required>
+            <label style="margin-top:8px">Timezone</label>
+<select name="tz">
+  <option value="UTC" {% if (data and data['tz']=='UTC') or (not data and default_tz=='UTC') %}selected{% endif %}>UTC</option>
+  <option value="America/Denver" {% if (data and data['tz']=='America/Denver') or (not data and default_tz=='America/Denver') %}selected{% endif %}>America/Denver (MT)</option>
+  <option value="America/Los_Angeles" {% if (data and data['tz']=='America/Los_Angeles') or (not data and default_tz=='America/Los_Angeles') %}selected{% endif %}>America/Los_Angeles (PT)</option>
+  <option value="America/New_York" {% if (data and data['tz']=='America/New_York') or (not data and default_tz=='America/New_York') %}selected{% endif %}>America/New_York (ET)</option>
+  <option value="Europe/London" {% if (data and data['tz']=='Europe/London') or (not data and default_tz=='Europe/London') %}selected{% endif %}>Europe/London</option>
+  <option value="Europe/Paris" {% if (data and data['tz']=='Europe/Paris') or (not data and default_tz=='Europe/Paris') %}selected{% endif %}>Europe/Paris</option>
+  <option value="Asia/Kolkata" {% if (data and data['tz']=='Asia/Kolkata') or (not data and default_tz=='Asia/Kolkata') %}selected{% endif %}>Asia/Kolkata</option>
+  <option value="Asia/Tokyo" {% if (data and data['tz']=='Asia/Tokyo') or (not data and default_tz=='Asia/Tokyo') %}selected{% endif %}>Asia/Tokyo</option>
+  <option value="Australia/Sydney" {% if (data and data['tz']=='Australia/Sydney') or (not data and default_tz=='Australia/Sydney') %}selected{% endif %}>Australia/Sydney</option>
+</select>
+
           </div>
           <div>
             <label>Location (lat, lon, elevation m)</label>
