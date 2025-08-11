@@ -616,10 +616,22 @@ def chart():
             orb_val = request.args.get(spec['key']+"_orb")
             aspect_opts[spec['key']+"_orb"] = float(orb_val) if orb_val is not None and orb_val != '' else spec['default_orb']
 
-        # Make the datetime timezone-aware for Skyfield (treat input as UTC for now)
-local_dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M")
-dt = pytz.UTC.localize(local_dt)
-utc_offset = "+00:00"
+        # Localize input datetime using selected timezone, then convert to UTC for computation
+tz_name = request.args.get("tz", "UTC")
+try:
+    tz = pytz.timezone(tz_name)
+except Exception:
+    tz = pytz.UTC
+    tz_name = 'UTC'
+local_naive = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M")
+local_dt = tz.localize(local_naive)
+dt = local_dt.astimezone(pytz.UTC)
+# Format offset like +HH:MM
+offset_sec = int(local_dt.utcoffset().total_seconds())
+sign = '+' if offset_sec >= 0 else '-'
+hh = abs(offset_sec)//3600
+mm = (abs(offset_sec)%3600)//60
+utc_offset = f"{sign}{hh:02d}:{mm:02d}"
 
 
         helio = (frame == 'helio')
