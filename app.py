@@ -601,16 +601,11 @@ def chart():
             orb_val = request.args.get(spec['key']+"_orb")
             aspect_opts[spec['key']+"_orb"] = float(orb_val) if orb_val is not None and orb_val != '' else spec['default_orb']
 
-        # Treat input as local time (naive). For MVP we let Skyfield ingest naive as UTC; display offset only.
-        local_dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M")
-        import time
-        is_dst = time.localtime().tm_isdst
-        offset_sec = -time.timezone + (3600 if is_dst and time.daylight else 0)
-        sign = '+' if offset_sec >= 0 else '-'
-        hh = abs(offset_sec)//3600; mm = (abs(offset_sec)%3600)//60
-        utc_offset = f"{sign}{hh:02d}:{mm:02d}"
+        # Make the datetime timezone-aware for Skyfield (treat input as UTC for now)
+local_dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M")
+dt = pytz.UTC.localize(local_dt)
+utc_offset = "+00:00"
 
-        dt = local_dt  # naive
 
         helio = (frame == 'helio')
         longs_trop = planetary_longitudes(dt, lat, lon, elev, helio=helio)
