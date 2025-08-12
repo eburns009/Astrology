@@ -532,8 +532,8 @@ def index():
     # Default dropdown selection uses 'auto' (detect from birthplace)
     default_tz = 'auto'
     # Prefill the datetime-local field with a valid string (any zone works just to seed the control)
-    now_local = datetime.now(pytz.timezone('America/Denver')).replace(second=0, microsecond=0)
-    default_dt = now_local.strftime("%Y-%m-%dT%H:%M")
+   # keep the user-entered birth time in the form
+default_dt = local_dt.strftime("%Y-%m-%dT%H:%M")
 
     # aspect controls default state
     aspects = []
