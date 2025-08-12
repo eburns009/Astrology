@@ -350,6 +350,17 @@ LAYOUT = """
   @media print {
     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
     .card, .wrap { box-shadow: none; }
+    form, .actions, details, .report-text { display: none !important; }
+    .minihead { display:none !important; }
+    .grid { grid-template-columns: 1fr !important; }
+    canvas { width: 7.5in !important; height: 7.5in !important; }
+    table { font-size: 12px; }
+    th, td { padding: 4px 6px; }
+    .card { padding: 0; background: none; border: 0; }
+  }
+  /* page size for print */
+  @page { size: letter; margin: 0.5in; }
+    .card, .wrap { box-shadow: none; }
     form, .actions, details { display: none; }
     .grid { grid-template-columns: 1fr; }
     .report-chart { break-after: page; page-break-after: always; }
@@ -470,6 +481,10 @@ LAYOUT = """
       <div>{{ data['place'] or '—' }}</div>
       <div class="dot"></div>
       <div>{{ data['dt_disp'] }} ({{ data['tz'] }}, UTC{{ data['utc_offset'] }})</div>
+      <div class="dot"></div>
+      <div>LST {{ data['lst'] }}</div>
+      <div class="dot"></div>
+      <div>Lat {{ data['lat'] }}°, Lon {{ data['lon'] }}°</div>
     </div>
     <div class="report-chart">
     <div class="grid" style="margin-top:16px;">
@@ -569,7 +584,7 @@ LAYOUT = """
     <script>
   // Chart rendering with header + clearer planet styling
   const table = {{ data_json | tojson }};
-  const header = {{ {'person': data['person'], 'place': data['place'], 'dt': data['dt_disp'], 'tz': data['tz'], 'offset': data['utc_offset']} | tojson }};
+  const header = {{ {'person': data['person'], 'place': data['place'], 'dt': data['dt_disp'], 'tz': data['tz'], 'offset': data['utc_offset'], 'lat': data['lat'], 'lon': data['lon'], 'lst': data['lst']} | tojson }};
 
   const canvas = document.getElementById('wheel');
   const ctx = canvas.getContext('2d');
@@ -613,6 +628,8 @@ LAYOUT = """
     if (header.person && header.person.trim() !== '') parts.push(header.person.trim());
     if (header.place && header.place.trim() !== '') parts.push(header.place.trim());
     parts.push(`${header.dt} (${header.tz}, UTC${header.offset})`);
+    parts.push(`LST ${header.lst}`);
+    parts.push(`Lat ${header.lat}°, Lon ${header.lon}°`);
     const title = parts.join('  •  ');
     ctx.save();
     ctx.fillStyle='#eaf2ff'; ctx.font='20px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='alphabetic';
@@ -851,6 +868,20 @@ def chart():
 
         cusps = equal_house_cusps(asc, mode=house_mode)
 
+        # Local Sidereal Time (at birthplace longitude)
+        lst_val_deg = lst_deg(dt, lon)
+        lst_hours = (lst_val_deg / 15.0) % 24.0
+        lst_h = int(lst_hours)
+        lst_m = int((lst_hours - lst_h) * 60)
+        lst_s = int(round((((lst_hours - lst_h) * 60) - lst_m) * 60))
+        if lst_s == 60:
+            lst_s = 0
+            lst_m += 1
+        if lst_m == 60:
+            lst_m = 0
+            lst_h = (lst_h + 1) % 24
+        lst_str = f"{lst_h:02d}:{lst_m:02d}:{lst_s:02d}"
+
         rows = []
         for name in [k for k,_ in PLANETS if (k != 'Earth' or helio)]:
             lonv = longs.get(name)
@@ -879,6 +910,7 @@ def chart():
             'lat': round(lat, 6),
             'lon': round(lon, 6),
             'elev': elev,
+            'lst': lst_str,
             'table': [{'name': r['name'], 'lon_fmt': r['lon_str']} for r in rows],
             'asc_fmt': format_longitude(asc),
             'mc_fmt': format_longitude(mc),
