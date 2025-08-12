@@ -1,7 +1,6 @@
 flask
 gunicorn
 skyfield
-jinja2
 pytz
 geopy
 timezonefinder
