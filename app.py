@@ -241,11 +241,40 @@ def dms(angle: float) -> tuple[int, int, float]:
     return d, m, s
 
 def format_longitude(angle: float) -> str:
-    d, m, s = dms(angle)
-    sign_index = int(floor(angle / 30.0)) % 12
-    in_sign = angle % 30.0
-    di, mi, si = dms(in_sign)
-    return f"{ZODIAC_SIGNS[sign_index]} {di:02d}°{mi:02d}'{si:04.1f}″"
+    # Normalize to 0-360
+    a = normalize_deg(angle)
+    
+    # Get sign (0-11 for Aries-Pisces)
+    sign_index = int(floor(a / 30.0)) % 12
+    
+    # Get position within sign (0-30 degrees)
+    in_sign = a % 30.0
+    
+    # Convert to degrees and minutes with better precision
+    degrees = int(floor(in_sign))
+    minutes_full = (in_sign - degrees) * 60.0
+    minutes = int(floor(minutes_full))
+    seconds = (minutes_full - minutes) * 60.0
+    
+    # Round seconds to 1 decimal place
+    seconds = round(seconds, 1)
+    
+    # Handle seconds rounding to 60
+    if seconds >= 60.0:
+        seconds = 0.0
+        minutes += 1
+    
+    # Handle minutes rounding to 60
+    if minutes >= 60:
+        minutes = 0
+        degrees += 1
+    
+    # Handle degrees rounding to 30 (next sign)
+    if degrees >= 30:
+        degrees = 0
+        sign_index = (sign_index + 1) % 12
+    
+    return f"{ZODIAC_SIGNS[sign_index]} {degrees:02d}°{minutes:02d}'{seconds:04.1f}″"
 
 def is_leap(year: int) -> bool:
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
@@ -1082,10 +1111,14 @@ LAYOUT = """
         <div>
           <div class="section-title">Positions ({{ data['frame']|upper }} · {{ data['zodiac'] }})</div>
           <table>
-            <thead><tr><th>Body</th><th>Longitude</th></tr></thead>
+            <thead><tr><th>Body</th><th>Longitude</th><th>Decimal°</th></tr></thead>
             <tbody>
               {% for row in data['table'] %}
-              <tr><td>{{ row.name }}</td><td>{{ row.lon_fmt }}</td></tr>
+              <tr>
+                <td>{{ row.name }}</td>
+                <td>{{ row.lon_fmt }}</td>
+                <td>{{ row.sign }} {{ row.decimal_degrees }}°</td>
+              </tr>
               {% endfor %}
             </tbody>
           </table>
@@ -1489,7 +1522,12 @@ def chart():
         
         # Sidereal conversion when requested
         ay = fagan_bradley_ayanamsa(dt) if zodiac == "sidereal" else 0.0
-        longs = {n: normalize_deg(L - (ay if zodiac=="sidereal" else 0.0)) for n, L in longs_trop.items()}
+        
+        # Apply ayanamsa conversion more precisely
+        if zodiac == "sidereal":
+            longs = {n: normalize_deg(L - ay) for n, L in longs_trop.items()}
+        else:
+            longs = longs_trop.copy()
         
         # ASC/MC
         asc_trop, mc_trop = asc_mc(dt, lat, lon)
@@ -1568,7 +1606,16 @@ def chart():
             if name not in longs:
                 continue
             lam = longs[name]
-            table_rows.append({"name": name, "lon": lam, "lon_fmt": format_longitude(lam)})
+            # Add decimal degrees for debugging/verification
+            sign_index = int(floor(lam / 30.0)) % 12
+            in_sign_decimal = lam % 30.0
+            table_rows.append({
+                "name": name, 
+                "lon": lam, 
+                "lon_fmt": format_longitude(lam),
+                "decimal_degrees": round(in_sign_decimal, 2),
+                "sign": ZODIAC_SIGNS[sign_index]
+            })
         
         houses_rows = [{"idx": i+1, "lon": c, "lon_fmt": format_longitude(c)} for i, c in enumerate(cusps)]
         
@@ -1585,7 +1632,8 @@ def chart():
             "elev": elev,
             "frame": frame,
             "zodiac": "Sidereal" if zodiac=="sidereal" else "Tropical",
-            "ayanamsa": round(ay, 6) if zodiac=="sidereal" else 0.0,
+            "ayanamsa": round(ay, 6),
+            "ayanamsa_formatted": f"{round(ay, 2)}°" if zodiac=="sidereal" else "N/A",
             "asc_fmt": format_longitude(asc),
             "mc_fmt": format_longitude(mc),
             "houses": houses_rows,
