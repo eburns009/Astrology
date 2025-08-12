@@ -482,7 +482,7 @@ LAYOUT = """
             window.scrollTo({ top: 0, behavior: 'smooth' });
           });
         })();
-      </scri
+      </script>
 
     {% if data %}
     <div class="card minihead">
@@ -784,173 +784,16 @@ def index():
     for spec in ASPECTS_DEF:
         aspects.append({"key": spec['key'], "name": spec['name'], "orb": spec['default_orb'], "on": True})
 
-    return render_template_string(LAYOUT, default_dt=default_dt, default_tz=default_tz, data=None, aspects=aspects)
-
-@app.route("/about")
-def about():
-    return ABOUT
-
-@app.route("/chart")
-def chart():
-    try:
-        # Core fields
-        dt_str = request.args.get("dt")
-        frame = request.args.get("frame", "geo")
-        zodiac = request.args.get("zodiac", "sidereal")
-        house_mode = request.args.get("house_mode", "asc_middle")
-        house_clockwise = request.args.get("house_clockwise", "no") == "yes"
-        person = (request.args.get("person") or "").strip()
-
-        # Aspect form inputs
-        aspect_opts = {}
-        for spec in ASPECTS_DEF:
-            aspect_opts[spec['key']+"_on"] = (request.args.get(spec['key']+"_on") is not None)
-            orb_val = request.args.get(spec['key']+"_orb")
-            aspect_opts[spec['key']+"_orb"] = float(orb_val) if orb_val not in (None, '') else spec['default_orb']
-
-        # Birthplace or coordinates
-        place = (request.args.get("place") or "").strip()
-        lat_str = (request.args.get("lat") or "").strip()
-        lon_str = (request.args.get("lon") or "").strip()
-        elev_str = (request.args.get("elev") or "").strip()
-
-        lat = lon = None
-        elev = float(elev_str) if elev_str else 0.0
-
-        if lat_str and lon_str:
-            lat = float(lat_str); lon = float(lon_str)
-            resolved_place = place or "(coords provided)"
-        elif place:
-            try:
-                loc = _geocoder.geocode(place, addressdetails=True, language='en', timeout=10)
-                if not loc:
-                    return jsonify({'error': f"Couldn't find that birthplace: '{place}'. Try a broader query or enter coordinates."}), 400
-                lat = float(loc.latitude); lon = float(loc.longitude)
-                resolved_place = getattr(loc, 'address', getattr(loc, 'display_name', place))
-            except Exception as ge:
-                return jsonify({'error': f"Geocoding failed: {ge}"}), 400
-        else:
-            return jsonify({'error': 'Please enter a birthplace or coordinates.'}), 400
-
-        # Timezone handling (auto from coords, or manual)
-        tz_name = request.args.get("tz", "auto")
-        if tz_name == 'auto':
-            try:
-                guess = _tzf.timezone_at(lng=lon, lat=lat)
-            except Exception:
-                guess = None
-            tz_name = guess or 'UTC'
-        try:
-            tz = pytz.timezone(tz_name)
-        except Exception:
-            tz = pytz.UTC
-            tz_name = 'UTC'
-
-        # Localize birth time and convert to UTC
-        local_naive = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M")
-        local_dt = tz.localize(local_naive)
-        dt = local_dt.astimezone(pytz.UTC)
-
-        # For display: UTC offset like +HH:MM
-        offset_sec = int(local_dt.utcoffset().total_seconds())
-        sign = '+' if offset_sec >= 0 else '-'
-        hh = abs(offset_sec)//3600
-        mm = (abs(offset_sec)%3600)//60
-        utc_offset = f"{sign}{hh:02d}:{mm:02d}"
-
-        helio = (frame == 'helio')
-        longs_trop = planetary_longitudes(dt, lat, lon, elev, helio=helio)
-
-        if zodiac == 'sidereal':
-            longs = to_sidereal(longs_trop, dt)
-            ay = round(fagan_bradley_ayanamsa(dt), 6)
-        else:
-            longs = longs_trop
-            ay = 0.0
-
-        # ASC / MC and houses (computed in same zodiac as positions)
-        asc_trop, mc_trop = asc_mc(dt, lat, lon)
-        if zodiac == 'sidereal':
-            asc = normalize_deg(asc_trop - ay)
-            mc = normalize_deg(mc_trop - ay)
-        else:
-            asc, mc = asc_trop, mc_trop
-
-        cusps = equal_house_cusps(asc, mode=house_mode)
-
-        # Local Sidereal Time (at birthplace longitude)
-        lst_val_deg = lst_deg(dt, lon)
-        lst_hours = (lst_val_deg / 15.0) % 24.0
-        lst_h = int(lst_hours)
-        lst_m = int((lst_hours - lst_h) * 60)
-        lst_s = int(round((((lst_hours - lst_h) * 60) - lst_m) * 60))
-        if lst_s == 60:
-            lst_s = 0
-            lst_m += 1
-        if lst_m == 60:
-            lst_m = 0
-            lst_h = (lst_h + 1) % 24
-        lst_str = f"{lst_h:02d}:{lst_m:02d}:{lst_s:02d}"
-
-        rows = []
-        for name in [k for k,_ in PLANETS if (k != 'Earth' or helio)]:
-            lonv = longs.get(name)
-            rows.append({
-                'name': name,
-                'lon': round(lonv, 6),
-                'lon_str': format_longitude(lonv),
-            })
-
-        # Aspects
-        aspects_list = find_aspects(longs, aspect_opts)
-
-        aspect_orbs_dict = { spec['name']: aspect_opts.get(spec['key']+"_orb", spec['default_orb']) for spec in ASPECTS_DEF }
-
-        # House label order (numbering)
-        labels = [f"{i}" for i in range(1,13)]  # visual orientation is handled by rotation
-
-        data = {
-            'frame': frame,
-            'zodiac': zodiac,
-            'ayanamsa': round(ay, 6),
-            'dt_disp': local_dt.strftime('%Y-%m-%d %H:%M'),
-            'utc_offset': utc_offset,
-            'tz': tz_name,
-            'place': resolved_place,
-            'lat': round(lat, 6),
-            'lon': round(lon, 6),
-            'elev': elev,
-            'lst': lst_str,
-            'table': [{'name': r['name'], 'lon_fmt': r['lon_str']} for r in rows],
-            'asc_fmt': format_longitude(asc),
-            'mc_fmt': format_longitude(mc),
-            'houses': [{'idx': (i+1), 'lon_fmt': format_longitude(l)} for i, l in enumerate(cusps)],
-            'aspects': aspects_list,
-            'person': person,
-            'aspect_orbs': aspect_orbs_dict,
-        }
-
-        data_json = {
-            'rows': rows,
-            'asc': asc,
-            'mc': mc,
-            'rotationDeg': asc + 180.0,  # put ASC at left
-            'cusps': cusps,
-            'houseClockwise': house_clockwise,
-            'houseLabels': labels,
-            'aspects': aspects_list,
-        }
-
-        # keep the user-entered birth time in the form
-        default_dt = local_dt.strftime("%Y-%m-%dT%H:%M")
-
-        aspects_ui = []
-        for spec in ASPECTS_DEF:
-            aspects_ui.append({
-                'key': spec['key'], 'name': spec['name'],
-                'orb': aspect_opts.get(spec['key']+"_orb", spec['default_orb']),
-                'on': aspect_opts.get(spec['key']+"_on", True)
-            })
-
-        return render_template_string(
+    return render_template_string(
             LAYOUT,
+            default_dt=default_dt,
+            default_tz=tz_name,
+            data=data,
+            data_json=data_json,
+            aspects=aspects_ui
+        )
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=10000)
