@@ -661,5 +661,211 @@ LAYOUT = """
 </html>
 """
 
+ABOUT = """
+<!doctype html>
+<html><head><meta charset=\"utf-8\"><title>About</title>
+<style>body{background:#fff;color:#111827;font-family:ui-sans-serif} .wrap{max-width:800px;margin:40px auto;padding:0 16px} a{color:#2563eb}</style>
+</head>
+<body><div class=\"wrap\">
+<h1>About & current limits</h1>
+<ul>
+  <li><b>Accuracy:</b> Skyfield (apparent positions) + JPL DE441 when available (fallback DE440s). Swiss Ephemeris used for ayanamsha and ASC/MC when installed.</li>
+  <li><b>Sidereal:</b> Fagan/Bradley (SVP) via Swiss; fallback polynomial if Swiss missing.</li>
+  <li><b>Houses:</b> Equal (Asc middle / cusp).</li>
+  <li><b>Aspects:</b> 13 configurable (custom orbs & colors).</li>
+</ul>
+<p><a href=\"/\">Back</a></p>
+</div></body></html>
+"""
+
+@app.route("/about")
+def about():
+    return ABOUT
+
+
+@app.route("/")
+def index():
+    """Home page with empty form and defaults."""
+    default_tz = "auto"
+    now_local = datetime.now(pytz.timezone("America/Denver")).replace(second=0, microsecond=0)
+    default_dt = now_local.strftime("%Y-%m-%dT%H:%M")
+
+    aspects = [
+        {"key": spec["key"], "name": spec["name"], "orb": spec["default_orb"],
+         "default_orb": spec["default_orb"], "color": spec["color"], "on": True}
+        for spec in ASPECTS_DEF
+    ]
+
+    return render_template_string(
+        LAYOUT,
+        default_dt=default_dt,
+        default_tz=default_tz,
+        data=None,
+        aspects=aspects,
+    )
+
+
+@app.route("/chart")
+def chart():
+    try:
+        person = (request.args.get("person") or "").strip()
+        dt_str = request.args.get("dt")
+        tz_sel = request.args.get("tz", "auto")
+        place = (request.args.get("place") or "").strip()
+        lat_str = request.args.get("lat")
+        lon_str = request.args.get("lon")
+        elev_str = request.args.get("elev")
+        frame = request.args.get("frame", "geo")
+        zodiac = request.args.get("zodiac", "sidereal")
+        house_mode = request.args.get("house_mode", "asc_middle")
+
+        # Aspect options (default ON only on first submit)
+        has_aspect_params = any(key.endswith('_on') or key.endswith('_orb') for key in request.args.keys())
+        aspect_opts = {}
+        for spec in ASPECTS_DEF:
+            k = spec["key"]
+            on = True if not has_aspect_params else (request.args.get(f"{k}_on") is not None)
+            aspect_opts[f"{k}_on"] = on
+            try:
+                aspect_opts[f"{k}_orb"] = float(request.args.get(f"{k}_orb", spec["default_orb"]))
+            except Exception:
+                aspect_opts[f"{k}_orb"] = spec["default_orb"]
+
+        # Coordinates
+        lat = float(lat_str) if (lat_str and lat_str.strip()) else None
+        lon = float(lon_str) if (lon_str and lon_str.strip()) else None
+        elev = float(elev_str) if (elev_str and elev_str.strip()) else 0.0
+
+        if (lat is None or lon is None) and place:
+            loc = _geocoder.geocode(place, addressdetails=False, language="en")
+            if loc:
+                lat = float(loc.latitude)
+                lon = float(loc.longitude)
+
+        if lat is None or lon is None:
+            return jsonify({"error": "Please enter a valid birthplace or coordinates."}), 400
+
+        # Timezone
+        if tz_sel == "auto":
+            tz_name = _tzf.timezone_at(lng=lon, lat=lat) or "UTC"
+        else:
+            tz_name = tz_sel
+        tz = pytz.timezone(tz_name)
+
+        # Parse local birth time and make timezone-aware (DST-safe)
+        local_dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M")
+        try:
+            dt = tz.localize(local_dt, is_dst=None)
+        except pytz.exceptions.AmbiguousTimeError:
+            dt = tz.localize(local_dt, is_dst=True)
+        except pytz.exceptions.NonExistentTimeError:
+            dt = tz.localize(local_dt, is_dst=True)
+
+        # Display strings
+        dt_disp = dt.strftime("%Y-%m-%d %H:%M")
+        offset_td = dt.utcoffset() or (dt - dt)
+        total_min = int(offset_td.total_seconds() // 60)
+        sign = "+" if total_min >= 0 else "-"
+        hh = abs(total_min) // 60
+        mm = abs(total_min) % 60
+        utc_offset = f"{sign}{hh:02d}:{mm:02d}"
+        try:
+            dst_flag = "Yes" if (dt.dst() and dt.dst().total_seconds() != 0) else "No"
+        except Exception:
+            dst_flag = "—"
+
+        # Compute positions (tropical first)
+        helio = (frame == "helio")
+        longs_trop = planetary_longitudes(dt, lat, lon, elev, helio=helio)
+
+        # Sidereal conversion when requested
+        ay = fagan_bradley_ayanamsa(dt) if zodiac == "sidereal" else 0.0
+        longs = {n: normalize_deg(L - (ay if zodiac=="sidereal" else 0.0)) for n, L in longs_trop.items()}
+
+        # ASC/MC
+        asc_trop, mc_trop = asc_mc(dt, lat, lon)
+        asc = normalize_deg(asc_trop - (ay if zodiac=="sidereal" else 0.0))
+        mc = normalize_deg(mc_trop - (ay if zodiac=="sidereal" else 0.0))
+
+        # Houses (Equal)
+        cusps = equal_house_cusps(asc, mode=house_mode)
+
+        # Aspects
+        aspects_found = find_aspects(longs, aspect_opts)
+        aspect_orbs_dict = { spec['name']: aspect_opts.get(spec['key']+"_orb", spec['default_orb']) for spec in ASPECTS_DEF }
+
+        # LST for header
+        lst_val_deg = lst_deg(dt, lon)
+        lst_hours = (lst_val_deg / 15.0) % 24.0
+        lst_h = int(lst_hours); lst_m = int((lst_hours - lst_h) * 60); lst_s = int(round((((lst_hours - lst_h) * 60) - lst_m) * 60))
+        if lst_s == 60:
+            lst_s = 0; lst_m += 1
+        if lst_m == 60:
+            lst_m = 0; lst_h = (lst_h + 1) % 24
+        lst_str = f"{lst_h:02d}:{lst_m:02d}:{lst_s:02d}"
+
+        # Build tables
+        table_rows = []
+        for name in [n for n,_ in PLANETS if n != 'Earth']:
+            if name not in longs:
+                continue
+            lam = longs[name]
+            table_rows.append({"name": name, "lon": lam, "lon_fmt": format_longitude(lam)})
+
+        houses_rows = [{"idx": i+1, "lon": c, "lon_fmt": format_longitude(c)} for i, c in enumerate(cusps)]
+
+        data = {
+            "person": person,
+            "place": place,
+            "dt_disp": dt_disp,
+            "tz": tz_name,
+            "utc_offset": utc_offset,
+            "dst": dst_flag,
+            "lst": lst_str,
+            "lat": round(lat, 6),
+            "lon": round(lon, 6),
+            "elev": elev,
+            "frame": frame,
+            "zodiac": "Sidereal" if zodiac=="sidereal" else "Tropical",
+            "ayanamsa": round(ay, 6) if zodiac=="sidereal" else 0.0,
+            "asc_fmt": format_longitude(asc),
+            "mc_fmt": format_longitude(mc),
+            "houses": houses_rows,
+            "table": table_rows,
+            "aspects": aspects_found,
+            "aspect_orbs": aspect_orbs_dict,
+            "house_mode": house_mode,
+        }
+
+        data_json = {
+            "rotationDeg": normalize_deg(180.0 + asc),  # ASC at left
+            "cusps": cusps,
+            "rows": [{"name": r["name"], "lon": r["lon"]} for r in table_rows],
+            "aspects": [{"p1": a['p1'], "p2": a['p2'], "type": a['type'], "delta": a['delta']} for a in aspects_found],
+        }
+
+        # Echo defaults/aspects for form re-render
+        aspects_ui = [
+            {"key": spec["key"], "name": spec["name"], "orb": aspect_opts.get(spec["key"]+"_orb", spec["default_orb"]), "default_orb": spec["default_orb"], "color": spec["color"], "on": aspect_opts.get(spec["key"]+"_on", True if not has_aspect_params else False)}
+            for spec in ASPECTS_DEF
+        ]
+
+        # Keep the user-entered birth time in the form
+        default_dt = local_dt.strftime("%Y-%m-%dT%H:%M")
+
+        return render_template_string(
+            LAYOUT,
+            default_dt=default_dt,
+            default_tz=tz_name,
+            data=data,
+            data_json=data_json,
+            aspects=aspects_ui,
+        )
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+
