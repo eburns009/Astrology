@@ -1,10 +1,21 @@
-"""
+# -------- utilities --------"""
 New Astrology Emerging — Switchboard (Local) with Houses + Aspects + Birthplace
 Now supports:
 - Birth time (user-entered local time)
-- Birthplace by city (auto geocoding to lat/lon)
+- Birthplace by city (auto geocoding to lat/lon via GeoNames.org)
 - Auto timezone detection from birthplace (or manual choose)
 - Text listing for planets and aspects (in addition to tables)
+- Fixed stars, prenatal charts, and historical research capabilities
+
+Requirements:
+flask
+gunicorn
+skyfield
+pytz
+geopy
+timezonefinder
+pyswisseph
+requests
 """
 from __future__ import annotations
 from math import atan2, degrees, radians, sin, cos, floor, asin
