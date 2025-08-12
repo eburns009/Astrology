@@ -128,14 +128,16 @@ def get_timescale():
     global _ts
     if _ts is None:
         ts = get_loader().timescale()
-    return ts
+        _ts = ts
+        return _ts
 
 def get_ephemeris():
     global _eph
     if _eph is None:
         # Use the small kernel by default to avoid large downloads on first request
         eph = get_loader()("de440s.bsp")
-    return eph
+        _eph = eph
+        return _eph
 
 # -------- core calculations --------
 def planetary_longitudes(dt: datetime, lat: float, lon: float, elevation_m: float,
