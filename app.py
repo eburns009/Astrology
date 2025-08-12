@@ -427,6 +427,7 @@ LAYOUT = """
         <div class="actions">
           <button type="submit">Compute Chart</button>
           <button type="button" id="newChartBtn">New Chart</button>
+          <button type="button" id="printBtn">Print / Save PDF</button>
           <a class="pill" href="{{ url_for('about') }}">About & limits</a>
         </div>
       </form>
@@ -437,13 +438,18 @@ LAYOUT = """
             btn.addEventListener('click', function(){
               const f = btn.closest('form');
               if (!f) return;
-              const tzSel = f.querySelector('select[name="tz"]'); if (tzSel) tzSel.value = 'auto';
-              const place = f.querySelector('input[name="place"]'); if (place) place.value = '';
-              const lat = f.querySelector('input[name="lat"]'); if (lat) lat.value = '';
-              const lon = f.querySelector('input[name="lon"]'); if (lon) lon.value = '';
-              const elev = f.querySelector('input[name="elev"]'); if (elev) elev.value = '';
-              const person = f.querySelector('input[name="person"]'); if (person) person.value = '';
+              const tzSel = f.querySelector('select[name=\"tz\"]'); if (tzSel) tzSel.value = 'auto';
+              const place = f.querySelector('input[name=\"place\"]'); if (place) place.value = '';
+              const lat = f.querySelector('input[name=\"lat\"]'); if (lat) lat.value = '';
+              const lon = f.querySelector('input[name=\"lon\"]'); if (lon) lon.value = '';
+              const elev = f.querySelector('input[name=\"elev\"]'); if (elev) elev.value = '';
+              const person = f.querySelector('input[name=\"person\"]'); if (person) person.value = '';
               window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+          }
+          // Print button
+          const pbtn = document.getElementById('printBtn');
+          if (pbtn) pbtn.addEventListener('click', ()=> window.print()););
             });
           }
           // Aspect quick toggles
@@ -467,6 +473,8 @@ LAYOUT = """
       <div>{{ data['place'] or '—' }}</div>
       <div class="dot"></div>
       <div>{{ data['dt_disp'] }} ({{ data['tz'] }}, UTC{{ data['utc_offset'] }})</div>
+      <div class="dot"></div>
+      <div>DST {{ data['dst'] }}</div>
       <div class="dot"></div>
       <div>LST {{ data['lst'] }}</div>
       <div class="dot"></div>
@@ -547,7 +555,7 @@ LAYOUT = """
 
     <script>
       const table = {{ data_json | tojson }};
-      const header = {{ {'person': data['person'], 'place': data['place'], 'dt': data['dt_disp'], 'tz': data['tz'], 'offset': data['utc_offset'], 'lat': data['lat'], 'lon': data['lon'], 'lst': data['lst']} | tojson }};
+      const header = {{ {'person': data['person'], 'place': data['place'], 'dt': data['dt_disp'], 'tz': data['tz'], 'offset': data['utc_offset'], 'lat': data['lat'], 'lon': data['lon'], 'lst': data['lst'], 'dst': data['dst']} | tojson }};
 
       const canvas = document.getElementById('wheel');
       const ctx = canvas.getContext('2d');
@@ -589,6 +597,7 @@ LAYOUT = """
         parts.push(`${header.dt} (${header.tz}, UTC${header.offset})`);
         parts.push(`LST ${header.lst}`);
         parts.push(`Lat ${header.lat}°, Lon ${header.lon}°`);
+        parts.push(`DST ${header.dst}`);
         const t = parts.join('  •  ');
         ctx.save(); ctx.fillStyle='#111827'; ctx.font='20px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.fillText(t, cx, cy - R - 24); ctx.restore();
       })();
@@ -712,12 +721,24 @@ def chart():
             tz_name = tz_sel
         tz = pytz.timezone(tz_name)
         local_dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M")
-        dt = tz.localize(local_dt)
+        try:
+            dt = tz.localize(local_dt, is_dst=None)
+        except pytz.exceptions.AmbiguousTimeError:
+            # Fall-back hour (ambiguous): prefer DST
+            dt = tz.localize(local_dt, is_dst=True)
+        except pytz.exceptions.NonExistentTimeError:
+            # Spring-forward gap: choose DST side
+            dt = tz.localize(local_dt, is_dst=True)
         dt_disp = dt.strftime("%Y-%m-%d %H:%M")
         offset_td = dt.utcoffset() or (dt - dt)
         total_min = int(offset_td.total_seconds() // 60)
         sign = "+" if total_min >= 0 else "-"; hh = abs(total_min) // 60; mm = abs(total_min) % 60
         utc_offset = f"{sign}{hh:02d}:{mm:02d}"
+        # Daylight Saving Time flag for display
+        try:
+            dst_flag = "Yes" if (dt.dst() and dt.dst().total_seconds() != 0) else "No"
+        except Exception:
+            dst_flag = "—"
         helio = (frame == "helio")
         longs_trop = planetary_longitudes(dt, lat, lon, elev, helio=helio)
         ay = fagan_bradley_ayanamsa(dt) if zodiac == "sidereal" else 0.0
@@ -744,6 +765,7 @@ def chart():
         houses_rows = [{"idx": i+1, "lon": c, "lon_fmt": format_longitude(c)} for i, c in enumerate(cusps)]
         data = {
             "person": person, "place": place, "dt_disp": dt_disp, "tz": tz_name, "utc_offset": utc_offset,
+            "dst": dst_flag,
             "lst": lst_str, "lat": round(lat, 6), "lon": round(lon, 6), "elev": elev,
             "frame": frame, "zodiac": "Sidereal" if zodiac=="sidereal" else "Tropical",
             "ayanamsa": round(ay, 6) if zodiac=="sidereal" else 0.0,
