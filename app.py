@@ -347,33 +347,21 @@ LAYOUT = """
     .minihead{ display:flex; gap:16px; align-items:center; font-size:14px; }
     .minihead b{ font-size:16px; }
     .dot::before{ content:"•"; margin:0 8px; color:#5a6e8a; }
-  @media print {
-    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    .card, .wrap { box-shadow: none; }
-    form, .actions, details, .report-text { display: none !important; }
-    .minihead { display:none !important; }
-    .grid { grid-template-columns: 1fr !important; }
-    canvas { width: 7.5in !important; height: 7.5in !important; }
-    table { font-size: 12px; }
-    th, td { padding: 4px 6px; }
-    .card { padding: 0; background: none; border: 0; }
-  }
-  /* page size for print */
-  @page { size: letter; margin: 0.5in; }
-    .card, .wrap { box-shadow: none; }
-    form, .actions, details { display: none; }
-    .grid { grid-template-columns: 1fr; }
-    .report-chart { break-after: page; page-break-after: always; }
-    .report-text { break-before: page; page-break-before: always; }
-    canvas { width: 9in; height: 9in; }
-  }
-    .card, .wrap { box-shadow: none; }
-    form, .actions, details { display: none; }
-    .grid { grid-template-columns: 1fr; }
-    canvas { width: 9in; height: 9in; }
-  }
-  @page { size: letter; margin: 0.5in; }
-  .tooltip{ position:fixed; z-index:1000; background:#0e1520; color:#eaf2ff; border:1px solid #1f2a38; border-radius:8px; padding:6px 8px; font-size:13px; pointer-events:none; box-shadow:0 6px 20px rgba(0,0,0,.35); }
+    .tooltip{ position:fixed; z-index:1000; background:#0e1520; color:#eaf2ff; border:1px solid #1f2a38; border-radius:8px; padding:6px 8px; font-size:13px; pointer-events:none; box-shadow:0 6px 20px rgba(0,0,0,.35); }
+
+    /* PRINT: single-page — chart on top, tables at bottom */
+    @media print {
+      body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .card, .wrap { box-shadow: none; }
+      /* hide UI, keep only chart + tables */
+      form, .actions, details, .report-text, .minihead { display: none !important; }
+      .grid { grid-template-columns: 1fr !important; }
+      /* fit inside 0.5in margins on Letter */
+      canvas { width: 7.5in !important; height: 7.5in !important; }
+      table { font-size: 12px; }
+      th, td { padding: 4px 6px; }
+    }
+    @page { size: letter; margin: 0.5in; }
   </style>
 </head>
 <body>
