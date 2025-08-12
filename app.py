@@ -276,7 +276,7 @@ def fagan_bradley_ayanamsa(dt: datetime) -> float:
         swe.set_sid_mode(swe.SIDM_FAGAN_BRADLEY, 0, 0)
         ay = float(swe.get_ayanamsa_ut(jd))
         return normalize_deg(ay)
-    except Exception:
+    except (ImportError, Exception):
         # Fallback calculation for Fagan-Bradley SVP
         # Reference: Jan 1, 1950, 0h UT = 24.042044444 degrees
         # Rate: 50.29 arcseconds per year
@@ -395,7 +395,8 @@ def obliquity_deg(dt: datetime) -> float:
         jd = julian_day_utc(dt)
         eps, nutlon, nutobliq = swe.obl_ecl(jd, 1)
         return float(eps)
-    except Exception:
+    except (ImportError, Exception):
+        # Fallback if Swiss Ephemeris is not available
         return mean_obliquity_laskar(dt)
 
 def gmst_hours(dt: datetime) -> float:
@@ -416,7 +417,7 @@ def asc_mc(dt: datetime, lat_deg: float, lon_deg: float) -> tuple[float, float]:
         asc = float(ascmc[0])
         mc = float(ascmc[1])
         return normalize_deg(asc), normalize_deg(mc)
-    except Exception:
+    except (ImportError, Exception):
         pass
     
     ε = radians(obliquity_deg(dt))
@@ -938,6 +939,19 @@ LAYOUT = """
               const lon = f.querySelector('input[name="lon"]'); if (lon) lon.value = '';
               const elev = f.querySelector('input[name="elev"]'); if (elev) elev.value = '';
               const person = f.querySelector('input[name="person"]'); if (person) person.value = '';
+              
+              // Also clear the datetime to current time
+              const dtInput = f.querySelector('input[name="dt"]');
+              if (dtInput) {
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                dtInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+              }
+              
               window.scrollTo({ top: 0, behavior: 'smooth' });
             });
           }
@@ -1616,4 +1630,6 @@ def chart():
         return jsonify({"error": str(e)}), 400
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    import os
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
