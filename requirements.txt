@@ -1,7 +1,8 @@
-flask
-gunicorn
-skyfield
-pytz
-geopy
-timezonefinder
-pyswisseph
+flask==2.3.2
+gunicorn==21.2.0
+skyfield==1.46
+pytz==2023.3
+geopy==2.3.0
+timezonefinder==6.2.0
+requests==2.31.0
+# pyswisseph==2.10.3.2  # Comment out if causing build issues
