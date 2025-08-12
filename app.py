@@ -760,12 +760,37 @@ def chart():
         
         # Parse local birth time and make timezone-aware (DST-safe)
         local_dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M")
+        
+        # Properly handle DST by determining what was actually in effect at that time
         try:
+            # First try without specifying DST (will work for most dates)
             dt = tz.localize(local_dt, is_dst=None)
         except pytz.exceptions.AmbiguousTimeError:
-            dt = tz.localize(local_dt, is_dst=True)
+            # During fall-back transition (e.g., 2 AM occurs twice)
+            # We need to determine which occurrence the user meant
+            # For astrology, typically the first occurrence (DST) is assumed unless specified
+            dt_dst = tz.localize(local_dt, is_dst=True)   # First occurrence (DST)
+            dt_std = tz.localize(local_dt, is_dst=False)  # Second occurrence (Standard)
+            
+            # Use DST (first occurrence) as default for ambiguous times
+            # In a real application, this should be a user choice
+            dt = dt_dst
+            
         except pytz.exceptions.NonExistentTimeError:
-            dt = tz.localize(local_dt, is_dst=True)
+            # During spring-forward transition (e.g., 2:30 AM doesn't exist)
+            # This happens when clocks "spring forward"
+            
+            # Find the equivalent time after the spring-forward
+            # When 2:00 AM becomes 3:00 AM, 2:30 AM should become 3:30 AM
+            dt_before = tz.localize(local_dt - datetime.timedelta(hours=2), is_dst=False)
+            dt_after = tz.localize(local_dt + datetime.timedelta(hours=2), is_dst=True)
+            
+            # Calculate the DST offset change
+            dst_offset = dt_after.dst() - dt_before.dst()
+            
+            # Apply the spring-forward adjustment
+            adjusted_dt = local_dt + dst_offset
+            dt = tz.localize(adjusted_dt, is_dst=True)
         
         # Display strings
         dt_disp = dt.strftime("%Y-%m-%d %H:%M")
