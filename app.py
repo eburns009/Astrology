@@ -316,6 +316,8 @@ LAYOUT = """
     table { width:100%; border-collapse: collapse; }
     th, td { text-align:left; padding:8px 6px; border-bottom:1px dashed #e5e7eb; }
     .muted { color:var(--muted); }
+    .pill { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border-radius:999px; border:1px solid #d1d5db; background:#f8fafc; color:#1f2937; font-size:12px; cursor:pointer; }
+    .pill:hover { background:#eef2f7; }
     .section-title{ margin-top:10px; font-weight:700; }
     .minihead{ display:flex; gap:16px; align-items:center; font-size:14px; }
     .minihead b{ font-size:16px; }
@@ -333,13 +335,6 @@ LAYOUT = """
       /* Fit one Letter page */
       canvas { width: 7.0in !important; height: 7.0in !important; }
       pre { font-size: 11px; line-height: 1.35; white-space: pre-wrap; }
-    }
-      .card, .wrap { box-shadow: none; }
-      form, .actions, details { display: none !important; }
-      .grid { grid-template-columns: 1fr !important; }
-      canvas { width: 7.5in !important; height: 7.5in !important; }
-      table { font-size: 12px; }
-      th, td { padding: 4px 6px; }
     }
     @page { size: letter; margin: 0.5in; }
   </style>
@@ -381,7 +376,7 @@ LAYOUT = """
             </select>
           </div>
         </div>
-        <details>
+        <details open>
           <summary>Advanced (lat/lon, frame, zodiac, houses, aspects)</summary>
           <div class="row2" style="margin-top:8px;">
             <div><label>Lat</label><input name="lat" value="{{ data['lat'] if data else '' }}" placeholder="40.015" /></div>
