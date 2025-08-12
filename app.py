@@ -393,7 +393,7 @@ def obliquity_deg(dt: datetime) -> float:
     try:
         import swisseph as swe  # type: ignore
         jd = julian_day_utc(dt)
-        eps, *, * = swe.obl_ecl(jd, 1)
+        eps, nutlon, nutobliq = swe.obl_ecl(jd, 1)
         return float(eps)
     except Exception:
         return mean_obliquity_laskar(dt)
