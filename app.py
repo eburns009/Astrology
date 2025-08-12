@@ -172,40 +172,65 @@ def format_geonames_display(place):
     return ', '.join(parts)
 
 def search_nominatim_fallback(place_name: str):
-    """Fallback to current Nominatim geocoding for compatibility."""
+    """Fallback to current Nominatim geocoding (no GeoNames). Returns a list of
+    place dicts roughly matching the GeoNames shape used elsewhere in the app.
+    """
     try:
-        geocoder = Nominatim(user_agent="nae-switchboard (contact: support@newastrology.app)", timeout=5)
-        locations = geocoder.geocode(place_name, exactly_one=False, limit=10, addressdetails=True)
-        
+        geocoder = Nominatim(
+            user_agent="nae-switchboard (contact: support@newastrology.app)",
+            timeout=5
+        )
+        locations = geocoder.geocode(
+            place_name,
+            exactly_one=False,
+            limit=10,
+            addressdetails=True
+        )
         if not locations:
             return []
-        
+
         results = []
         for loc in locations:
-            try:
-                if hasattr(loc, 'latitude') and hasattr(loc, 'longitude'):
-                    result = {
-                        'name': loc.raw.get('display_name', '').split(',')[0] if loc.raw.get('display_name') else '',
-                        'admin1': loc.raw.get('address', {}).get('state', '') if loc.raw.get('address') else '',
-                        'admin2': loc.raw.get('address', {}).get('county', '') if loc.raw.get('address') else '',
-                        'country': loc.raw.get('address', {}).get('country', '') if loc.raw.get('address') else '',
-                        'country_code': loc.raw.get('address', {}).get('country_code', '').upper() if loc.raw.get('address', {}).get('country_code') else '',
-                        'latitude': float(loc.latitude),
-                        'longitude': float(loc.longitude),
-                        'population': 0,  # Not available from Nominatim
-                        'timezone': '',   # Will be detected separately
-                        'feature_class': 'P',  # Assume populated place
-                        'feature_code': 'PPL',
-                        'display_name': loc.raw.get('display_name', '')
-                    }
-                    results.append(result)
-            except (ValueError, TypeError, AttributeError):
-                # Skip malformed entries
-                continue
-        
+            raw = getattr(loc, "raw", {}) or {}
+            addr = raw.get("address", {}) or {}
+
+            display_name = raw.get("display_name", "") or ""
+            if display_name:
+                name = display_name.split(",")[0]
+            else:
+                name = (
+                    addr.get("city")
+                    or addr.get("town")
+                    or addr.get("village")
+                    or addr.get("hamlet")
+                    or ""
+                )
+
+            admin1 = addr.get("state", "") or addr.get("region", "")
+            admin2 = addr.get("county", "")
+            country = addr.get("country", "")
+            cc = addr.get("country_code", "")
+            country_code = cc.upper() if cc else ""
+
+            results.append({
+                "name": name,
+                "admin1": admin1,
+                "admin2": admin2,
+                "country": country,
+                "country_code": country_code,
+                "latitude": float(loc.latitude),
+                "longitude": float(loc.longitude),
+                "population": 0,
+                "timezone": "",
+                "feature_class": "P",
+                "geonameId": ""
+            })
+
         return results
+
     except Exception:
         return []
+
 
 def get_best_location_match(place_name: str):
     """Get the best location match, preferring populated places."""
@@ -314,13 +339,10 @@ def fagan_bradley_ayanamsa(dt: datetime) -> float:
         # Days since J1950.0 (Jan 1, 1950, 0h UT = JD 2433282.5)
         j1950 = 2433282.5
         days_since_1950 = jd - j1950
-        years_since_1950 = days_since_1950 / 365.25
-        
-        # Adjusted base value to match common astrological software
-        # This gives results closer to popular astrology programs
-        base_ayanamsa = 24.232  # Adjusted to match expected values
-        annual_rate = 50.29 / 3600.0  # Convert arcseconds to degrees
-        
+        years_since_1950 = days_since_1950 / 365.24219879  # tropical year
+        # Fagan/Bradley (SVP) precise constants
+        base_ayanamsa = 24.044286111  # 24°02′39.43″ at J1950.0
+        annual_rate = 50.290966 / 3600.0  # arcsec/year -> deg/year
         # Calculate ayanamsa for the given date
         ay = base_ayanamsa + (years_since_1950 * annual_rate)
         
@@ -354,8 +376,8 @@ def planetary_longitudes(dt: datetime, lat: float, lon: float, elevation_m: floa
     if helio:
         origin = eph["sun"]
     else:
-        topos = wgs84.latlon(latitude_degrees=lat, longitude_degrees=lon, elevation_m=elevation_m)
-        origin = eph["earth"] + topos
+        # Use true geocenter for planetary longitudes
+        origin = eph["earth"]
     
     results = {}
     for name, key in PLANETS:
@@ -363,7 +385,8 @@ def planetary_longitudes(dt: datetime, lat: float, lon: float, elevation_m: floa
             if not helio:
                 continue
         target = eph[key]
-        apparent = origin.at(t).observe(target).apparent()
+        astrometric = origin.at(t).observe(target)  # true geometric (no aberration/deflection)
+        apparent = astrometric
         lat_ecl, lon_ecl, distance = apparent.frame_latlon(ECLIPTIC_FRAME)
         lam = normalize_deg(lon_ecl.degrees)
         results[name] = lam
