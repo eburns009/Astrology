@@ -620,39 +620,41 @@ LAYOUT = """
     drawTextOnRing(String(i+1), -(cusp+15)+rotation, R*0.88, '18px ui-sans-serif', '#cfe0ff');
   });
 
-  // Planets with improved visibility (halo + outline + label background)
+  // Precompute planet positions first (so we can draw aspects underneath)
   const positions = {};
   table.rows.forEach(row=>{
-    const lon=row.lon; const signIndex=Math.floor(((lon%360)+360)%360/30);
-    const label=(planetGlyph[row.name]||row.name)+" "+signGlyph[signIndex]+" "+degMin(lon);
+    const lon = row.lon;
     const a = deg2rad(-(lon)+rotation);
-    const pr = R*0.80; const x=cx+Math.cos(a)*pr, y=cy+Math.sin(a)*pr;
-
-    // Halo + filled circle
-    const col = planetColor[row.name] || '#7cc0ff';
-    ctx.save(); ctx.shadowColor=col; ctx.shadowBlur=12; ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.fillStyle=col; ctx.fill(); ctx.restore();
-    // Dark outline
-    ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.lineWidth=2; ctx.strokeStyle='#0b0f14'; ctx.stroke();
-
-    // Leader line
-    const lr=pr+32; const lx=cx+Math.cos(a)*lr, ly=cy+Math.sin(a)*lr;
-    ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(lx,ly); ctx.strokeStyle='#4b97d1'; ctx.lineWidth=1.5; ctx.stroke();
-
-    // Label with rounded dark background for contrast
-    ctx.save(); ctx.translate(lx,ly); ctx.rotate(a);
-    ctx.font='16px ui-sans-serif'; const metrics = ctx.measureText(label); const pad=6; const w=metrics.width+pad*2; const h=22+pad*2;
-    ctx.fillStyle='rgba(12,19,30,0.88)'; ctx.strokeStyle='#2a3a52'; ctx.lineWidth=1;
-    roundRect(-w/2,-h/2,w,h,10); ctx.fill(); ctx.stroke();
-    ctx.fillStyle='#eaf2ff'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(label, 0, 0);
-    ctx.restore();
-
-    positions[row.name]={x,y};
+    const pr = R*0.80;
+    const x = cx + Math.cos(a)*pr, y = cy + Math.sin(a)*pr;
+    positions[row.name] = { x, y, lon };
   });
 
-  // Aspect lines with higher contrast
-  const aspectStyle={Conjunction:'#eaf2ff',Opposition:'#ff9aa2',Trine:'#9ae59a',Square:'#ffd49a',Sextile:'#9ac7ef',Quincunx:'#c9a4ef'};
-  table.aspects.forEach(a=>{ const p1=positions[a.p1], p2=positions[a.p2]; if(!p1||!p2) return; ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.strokeStyle=aspectStyle[a.type]||'#a4b3c6'; ctx.globalAlpha=0.9; ctx.lineWidth=2; ctx.stroke(); ctx.globalAlpha=1; });
+  // Aspect lines UNDER the planets for clarity
+  const aspectStyle = { Conjunction:'#eaf2ff', Opposition:'#ff9aa2', Trine:'#9ae59a', Square:'#ffd49a', Sextile:'#9ac7ef', Quincunx:'#c9a4ef' };
+  table.aspects.forEach(a=>{
+    const p1 = positions[a.p1], p2 = positions[a.p2];
+    if(!p1||!p2) return;
+    ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y);
+    ctx.strokeStyle = aspectStyle[a.type] || '#a4b3c6';
+    ctx.lineWidth = 2; ctx.globalAlpha = 0.9; ctx.stroke(); ctx.globalAlpha = 1;
+  });
+
+  // Planets — GLYPH ONLY (larger, high-contrast)
+  table.rows.forEach(row=>{
+    const p = positions[row.name];
+    const col = planetColor[row.name] || '#7cc0ff';
+    // soft halo + colored disc
+    ctx.save(); ctx.shadowColor = col; ctx.shadowBlur = 12;
+    ctx.beginPath(); ctx.arc(p.x, p.y, 18, 0, Math.PI*2); ctx.fillStyle = col; ctx.fill(); ctx.restore();
+    // outline for separation
+    ctx.beginPath(); ctx.arc(p.x, p.y, 18, 0, Math.PI*2); ctx.lineWidth = 2; ctx.strokeStyle = '#0b0f14'; ctx.stroke();
+    // glyph centered, with dark outline + white fill
+    const g = planetGlyph[row.name] || row.name[0];
+    ctx.font = '26px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.strokeStyle = '#0b0f14'; ctx.lineWidth = 3; ctx.strokeText(g, p.x, p.y);
+    ctx.fillStyle = '#ffffff'; ctx.fillText(g, p.x, p.y);
+  });
 </script>
     {% endif %}
   </div>
