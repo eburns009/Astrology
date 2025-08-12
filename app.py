@@ -21,7 +21,6 @@ from timezonefinder import TimezoneFinder
 app = Flask(__name__)
 geocoder = Nominatim(user_agent="nae-switchboard (contact: support@newastrology.app)", timeout=5)
 _tzf = TimezoneFinder()
-_loader = None
 _ts = None
 _eph = None
 
@@ -118,26 +117,22 @@ def fagan_bradley_ayanamsa(dt: datetime) -> float:
         return normalize_deg(ay)
 
 # -------- Skyfield helpers --------
-def get_loader() -> Loader:
-    global _loader
-    if _loader is None:
-        _loader = load
-    return _loader
+def get_loader():
+    # Return the Skyfield load function directly - don't cache it
+    return load
 
 def get_timescale():
     global _ts
     if _ts is None:
-        ts = get_loader().timescale()
-        _ts = ts
-        return _ts
+        _ts = load.timescale()
+    return _ts
 
 def get_ephemeris():
     global _eph
     if _eph is None:
         # Use the small kernel by default to avoid large downloads on first request
-        eph = get_loader()("de440s.bsp")
-        _eph = eph
-        return _eph
+        _eph = load("de440s.bsp")
+    return _eph
 
 # -------- core calculations --------
 def planetary_longitudes(dt: datetime, lat: float, lon: float, elevation_m: float,
