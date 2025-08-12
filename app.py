@@ -325,29 +325,29 @@ LAYOUT = """
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>New Astrology Emerging — Switchboard (Local)</title>
   <style>
-    :root { --bg:#0b0f14; --card:#121821; --ink:#eaf2ff; --muted:#9db2cf; --accent:#7cc0ff; }
+    :root { --bg:#ffffff; --card:#ffffff; --ink:#1f2937; --muted:#6b7280; --accent:#2563eb; }
     html,body { background:var(--bg); color:var(--ink); font-family: ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto; }
     .wrap { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
     .card { background:var(--card); border-radius: 16px; padding: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
     h1 { font-weight:700; letter-spacing:.2px; }
     label { display:block; margin:10px 0 6px; color:var(--muted); font-size:14px; }
-    input, select { background:#0e1520; color:var(--ink); border:1px solid #1f2a38; border-radius:10px; padding:10px 12px; width:100%; }
+    input, select { background:#ffffff; color:#111827; border:1px solid #d1d5db; border-radius:10px; padding:10px 12px; width:100%; }
     .row { display:grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
     .row2 { display:grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
     .row3 { display:grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
     .actions { display:flex; gap:10px; margin-top:14px; }
     button { background:var(--accent); color:#001; border:0; padding:12px 16px; border-radius:12px; font-weight:700; cursor:pointer; }
     .grid { display:grid; grid-template-columns: 520px 1fr; gap:16px; }
-    canvas { background:#0c131e; border:1px solid #1f2a38; border-radius:16px; width:100%; height:auto; }
+    canvas { background:#ffffff; border:1px solid #e5e7eb; border-radius:16px; width:100%; height:auto; }
     table { width:100%; border-collapse: collapse; }
-    th, td { text-align:left; padding:8px 6px; border-bottom:1px dashed #253246; }
+    th, td { text-align:left; padding:8px 6px; border-bottom:1px dashed #e5e7eb; }
     .muted { color:var(--muted); }
     .pill { display:inline-block; background:#0f1a28; border:1px solid #1e2a3a; padding:4px 8px; border-radius:999px; font-size:12px; }
     .section-title{ margin-top:10px; font-weight:700; }
     .minihead{ display:flex; gap:16px; align-items:center; font-size:14px; }
     .minihead b{ font-size:16px; }
     .dot::before{ content:"•"; margin:0 8px; color:#5a6e8a; }
-    .tooltip{ position:fixed; z-index:1000; background:#0e1520; color:#eaf2ff; border:1px solid #1f2a38; border-radius:8px; padding:6px 8px; font-size:13px; pointer-events:none; box-shadow:0 6px 20px rgba(0,0,0,.35); }
+    .tooltip{ position:fixed; z-index:1000; background:#ffffff; color:#111827; border:1px solid #e5e7eb; border-radius:8px; padding:6px 8px; font-size:13px; pointer-events:none; box-shadow:0 8px 24px rgba(0,0,0,.15); }
 
     /* PRINT: single-page — chart on top, tables at bottom */
     @media print {
@@ -457,10 +457,32 @@ LAYOUT = """
         </div>
         <div class="actions">
           <button type="submit">Compute Chart</button>
+          <button type="button" id="newChartBtn">New Chart</button>
           <a class="pill" href="{{ url_for('about') }}">About & limits</a>
         </div>
       </form>
-    </div>
+      <script>
+        (function(){
+          const btn = document.getElementById('newChartBtn');
+          if (!btn) return;
+          btn.addEventListener('click', function(){
+            const f = btn.closest('form');
+            if (!f) return;
+            // Reset key fields for a brand new chart
+            const tzSel = f.querySelector('select[name="tz"]');
+            if (tzSel) tzSel.value = 'auto';
+            const place = f.querySelector('input[name="place"]'); if (place) place.value = '';
+            const lat = f.querySelector('input[name="lat"]'); if (lat) lat.value = '';
+            const lon = f.querySelector('input[name="lon"]'); if (lon) lon.value = '';
+            const elev = f.querySelector('input[name="elev"]'); if (elev) elev.value = '';
+            const person = f.querySelector('input[name="person"]'); if (person) person.value = '';
+            // keep the user-entered birth time
+            // const dt = f.querySelector('input[name="dt"]'); if (dt) dt.value = '';
+            // scroll to top for convenience
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
+        })();
+      </scri
 
     {% if data %}
     <div class="card minihead">
@@ -584,13 +606,13 @@ LAYOUT = """
   const planetColor = { Sun:'#FFD166', Moon:'#B0BEC5', Mercury:'#64B5F6', Venus:'#F48FB1', Mars:'#EF5350', Jupiter:'#FFB74D', Saturn:'#D7CCC8', Uranus:'#4DD0E1', Neptune:'#64B5F6', Pluto:'#BA68C8' };
 
   function deg2rad(d){ return d*Math.PI/180; }
-  function drawCircle(r, w=2, stroke='#2a3a52'){ ctx.beginPath(); ctx.lineWidth=w; ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle=stroke; ctx.stroke(); }
-  function drawTick(angleDeg, r1, r2, lw=1, stroke='#1f2a38'){
+  function drawCircle(r, w=2, stroke='#cbd5e1'){ ctx.beginPath(); ctx.lineWidth=w; ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle=stroke; ctx.stroke(); }
+  function drawTick(angleDeg, r1, r2, lw=1, stroke='#e5e7eb'){
     const a = deg2rad(angleDeg), ca=Math.cos(a), sa=Math.sin(a);
     ctx.beginPath(); ctx.moveTo(cx+ca*r1, cy+sa*r1); ctx.lineTo(cx+ca*r2, cy+sa*r2);
     ctx.lineWidth = lw; ctx.strokeStyle = stroke; ctx.stroke();
   }
-  function drawTextOnRing(txt, angleDeg, radius, font='18px ui-sans-serif', fill='#eaf2ff'){
+  function drawTextOnRing(txt, angleDeg, radius, font='18px ui-sans-serif', fill='#1f2937'){
     const a = deg2rad(angleDeg);
     const x = cx + Math.cos(a)*radius, y = cy + Math.sin(a)*radius;
     ctx.save(); ctx.translate(x,y); ctx.rotate(a + Math.PI/2);
@@ -620,8 +642,8 @@ LAYOUT = """
     parts.push(`Lat ${header.lat}°, Lon ${header.lon}°`);
     const title = parts.join('  •  ');
     ctx.save();
-    ctx.fillStyle='#eaf2ff'; ctx.font='20px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='alphabetic';
-    ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=4; ctx.lineWidth=3;
+    ctx.fillStyle='#111827'; ctx.font='20px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+    ctx.shadowColor='rgba(0,0,0,.15)'; ctx.shadowBlur=4; ctx.lineWidth=3;
     ctx.fillText(title, cx, cy - R - 24);
     ctx.restore();
   })();
@@ -629,7 +651,7 @@ LAYOUT = """
   // 30° majors + 5° minors
   for(let d=0; d<360; d+=5){
     const major = (d%30===0);
-    drawTick(-(d)+rotation, R, R*(major?0.94:0.97), major?2:1, major?'#32445f':'#1f2a38');
+    drawTick(-(d)+rotation, R, R*(major?0.94:0.97), major?2:1, major?'#9ca3af':'#e5e7eb');
   }
 
   // Sign glyphs
@@ -639,8 +661,8 @@ LAYOUT = """
 
   // Houses: rays + numbers
   table.cusps.forEach((cusp,i)=>{
-    drawTick(-(cusp)+rotation, 0, R, 1.75, '#203045');
-    drawTextOnRing(String(i+1), -(cusp+15)+rotation, R*0.88, '18px ui-sans-serif', '#cfe0ff');
+    drawTick(-(cusp)+rotation, 0, R, 1.75, '#94a3b8');
+    drawTextOnRing(String(i+1), -(cusp+15)+rotation, R*0.88, '18px ui-sans-serif', '#475569');
   });
 
   // Precompute planet positions first (so we can draw aspects underneath)
@@ -932,15 +954,3 @@ def chart():
 
         return render_template_string(
             LAYOUT,
-            default_dt=default_dt,
-            default_tz=tz_name,
-            data=data,
-            data_json=data_json,
-            aspects=aspects_ui
-        )
-
-    except Exception as e:
-        return jsonify({ 'error': str(e) }), 400
-
-if __name__ == "__main__":
-    app.run(debug=True)
