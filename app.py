@@ -136,7 +136,7 @@ def get_timescale():
 def get_ephemeris():
     global _eph
     if _eph is None:
-        _eph = get_loader()("de421.bsp")
+        _eph = get_loader()("de440s.bsp")
     return _eph
 
 # -------- core calculations --------
@@ -169,11 +169,51 @@ def to_sidereal(longitudes_tropical: dict, dt: datetime) -> dict:
     return {name: normalize_deg(lon - ay) for name, lon in longitudes_tropical.items()}
 
 # -------- ASC/MC/Houses --------
-OBLIQ_DEG = 23.43929111  # J2000 mean obliquity
+# High-precision obliquity utilities (fallback to Laskar mean obliquity)
+OBLIQ_DEG_MEAN_J2000 = 23.43929111  # fallback constant
+
+def _julian_day_utc(dt: datetime) -> float:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=_tz.utc)
+    else:
+        dt = dt.astimezone(_tz.utc)
+    y, m = dt.year, dt.month
+    D = dt.day + (dt.hour + dt.minute/60 + dt.second/3600)/24.0
+    if m <= 2:
+        y -= 1
+        m += 12
+    A = y // 100
+    B = 2 - A + A // 5
+    JD = int(365.25 * (y + 4716)) + int(30.6001 * (m + 1)) + D + B - 1524.5
+    return JD
+
+def mean_obliquity_laskar(dt: datetime) -> float:
+    T = (_julian_day_utc(dt) - 2451545.0) / 36525.0
+    seconds = (84381.406
+               - 46.836769*T
+               - 0.0001831*(T**2)
+               + 0.00200340*(T**3)
+               - 5.76e-7*(T**4)
+               - 4.34e-8*(T**5))
+    return seconds / 3600.0  # degrees
+
+def obliquity_deg(dt: datetime) -> float:
+    """Return obliquity of the ecliptic in degrees.
+    Tries Swiss Ephemeris if available; otherwise uses Laskar mean obliquity.
+    """
+    try:
+        import swisseph as swe  # type: ignore
+        jd = _julian_day_utc(dt)
+        # Swiss provides mean obliquity with swe.obl_ecl(jd, flag)
+        # flag = 0 -> mean obliquity of date; flag = 1 -> true obliquity (includes nutation)
+        eps, _, _ = swe.obl_ecl(jd, 1)
+        return float(eps)
+    except Exception:
+        return mean_obliquity_laskar(dt)
 
 def gmst_hours(dt: datetime) -> float:
     t = get_timescale().from_datetime(dt)
-    return t.gmst  # hours
+    return t.gast  # hours (apparent sidereal time incl. nutation) 
 
 def lst_deg(dt: datetime, lon_deg: float) -> float:
     lst_h = gmst_hours(dt) + (lon_deg / 15.0)
@@ -181,8 +221,24 @@ def lst_deg(dt: datetime, lon_deg: float) -> float:
     return lst_h * 15.0
 
 def asc_mc(dt: datetime, lat_deg: float, lon_deg: float) -> tuple[float, float]:
-    """Return (ASC, MC) ecliptic longitudes in degrees."""
-    ε = radians(OBLIQ_DEG)
+    """Return (ASC, MC) ecliptic longitudes in degrees.
+    Tries Swiss Ephemeris for top-precision. Falls back to analytic
+    method using apparent sidereal time and obliquity-of-date.
+    """
+    # 1) Try Swiss Ephemeris (houses_ex with Equal houses just to get ASC/MC)
+    try:
+        import swisseph as swe  # type: ignore
+        jd = _julian_day_utc(dt)
+        flags = 0
+        cusps, ascmc = swe.houses_ex(jd, flags, float(lat_deg), float(lon_deg), b'E')
+        asc = float(ascmc[0])  # Ascendant
+        mc = float(ascmc[1])   # Midheaven
+        return normalize_deg(asc), normalize_deg(mc)
+    except Exception:
+        pass
+
+    # 2) Fallback analytic method
+    ε = radians(obliquity_deg(dt))
     φ = radians(lat_deg)
     θ = radians(lst_deg(dt, lon_deg))
 
@@ -190,7 +246,7 @@ def asc_mc(dt: datetime, lat_deg: float, lon_deg: float) -> tuple[float, float]:
     lam_mc = degrees(atan2(sin(θ), cos(θ)*cos(ε)))
     lam_mc = normalize_deg(lam_mc)
 
-    # ASC via sampling/root-refinement
+    # ASC via sampling/root-refinement (altitude ≈ 0°, eastern)
     def eq_to_altaz(alpha, delta):
         H = (θ - alpha)
         while H > 3.141592653589793: H -= 2*3.141592653589793
@@ -210,27 +266,22 @@ def asc_mc(dt: datetime, lat_deg: float, lon_deg: float) -> tuple[float, float]:
         delta = asin(sin(lamr)*sin(ε))
         return alpha, delta
 
-    samples = []
-    step = 1.0
     prev_h = None
     prev_lam = None
     roots = []
-    for lam in [i*step for i in range(361)]:
+    for lam in [i*1.0 for i in range(361)]:
         alpha, delta = ecl_to_eq(lam)
         h, A = eq_to_altaz(alpha, delta)
-        samples.append((lam, h, A))
         if prev_h is not None and (h*prev_h) < 0:
             lam0 = prev_lam + (0 - prev_h) * (lam - prev_lam) / (h - prev_h)
             alpha0, delta0 = ecl_to_eq(lam0)
             h0, A0 = eq_to_altaz(alpha0, delta0)
-            roots.append((lam0, h0, A0))
+            roots.append((lam0, A0))
         prev_h = h
         prev_lam = lam
 
-    asc_candidates = [lam for (lam, h0, A0) in roots if 0 < degrees(A0) < 180]
-    if not asc_candidates:
-        asc_candidates = [min(samples, key=lambda x: abs(degrees(x[2]) - 90))[0]]
-    lam_asc = normalize_deg(asc_candidates[0])
+    asc_candidates = [normalize_deg(l) for (l, A0) in roots if 0 < degrees(A0) < 180]
+    lam_asc = asc_candidates[0] if asc_candidates else 0.0
     return lam_asc, lam_mc
 
 def equal_house_cusps(asc_deg: float, mode: str = "asc_middle") -> list[float]:
@@ -296,6 +347,14 @@ LAYOUT = """
     .minihead{ display:flex; gap:16px; align-items:center; font-size:14px; }
     .minihead b{ font-size:16px; }
     .dot::before{ content:"•"; margin:0 8px; color:#5a6e8a; }
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .card, .wrap { box-shadow: none; }
+    form, .actions, details { display: none; }
+    .grid { grid-template-columns: 1fr; }
+    canvas { width: 9in; height: 9in; }
+  }
+  @page { size: letter; margin: 0.5in; }
   </style>
 </head>
 <body>
@@ -313,6 +372,9 @@ LAYOUT = """
             <input type="datetime-local" name="dt" value="{{ default_dt }}" required>
             <label style="margin-top:8px">Timezone</label>
             <select name="tz">
+              {% if data %}
+              <option value="{{ data['tz'] }}" selected>{{ data['tz'] }}{% if request.args.get('tz','auto')=='auto' %} (auto){% endif %}</option>
+              {% endif %}
               <option value="auto" {% if (data and data['tz']=='auto') or (not data and default_tz=='auto') %}selected{% endif %}>Auto (from birthplace)</option>
               <option value="UTC" {% if (data and data['tz']=='UTC') or (not data and default_tz=='UTC') %}selected{% endif %}>UTC</option>
               <option value="America/Denver" {% if (data and data['tz']=='America/Denver') or (not data and default_tz=='America/Denver') %}selected{% endif %}>America/Denver (MT)</option>
@@ -426,7 +488,7 @@ LAYOUT = """
                 <li>Birth time accuracy matters — ASC/MC and houses shift quickly.</li>
                 <li>“Auto” timezone comes from birthplace; override it if it looks wrong.</li>
                 <li>If geocoding can’t find the city, enter coordinates under Advanced.</li>
-                <li>Sidereal ayanamsa uses a smooth polynomial; we can swap in Swiss Ephemeris later.</li>
+                <li>Sidereal ayanamsa uses Swiss Ephemeris when installed (fallback to polynomial).</li>
               </ul>
             </details>
           </div>
@@ -474,70 +536,73 @@ LAYOUT = """
     </div>
 
     <script>
+      // Enhanced wheel for print-like output with glyphs, ticks, labels
       const table = {{ data_json | tojson }};
+
       const canvas = document.getElementById('wheel');
       const ctx = canvas.getContext('2d');
       const W = canvas.width, H = canvas.height; const cx=W/2, cy=H/2;
       const R = Math.min(W,H)*0.45;
 
-      function drawCircle(r, width=2){ ctx.beginPath(); ctx.lineWidth=width; ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle = '#2a3a52'; ctx.stroke(); }
-      function drawText(txt, x, y, align='center') { ctx.fillStyle='#eaf2ff'; ctx.font='16px ui-sans-serif'; ctx.textAlign=align; ctx.textBaseline='middle'; ctx.fillText(txt, x, y); }
+      const signGlyph = ['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓'];
+      const planetGlyph = { Sun:'☉', Moon:'☾', Mercury:'☿', Venus:'♀', Mars:'♂', Jupiter:'♃', Saturn:'♄', Uranus:'♅', Neptune:'♆', Pluto:'♇' };
+
       function deg2rad(d){ return d*Math.PI/180; }
+      function drawCircle(r, w=2, stroke='#2a3a52'){ ctx.beginPath(); ctx.lineWidth=w; ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle=stroke; ctx.stroke(); }
+      function drawTick(angleDeg, r1, r2, lw=1, stroke='#1f2a38'){
+        const a = deg2rad(angleDeg), ca=Math.cos(a), sa=Math.sin(a);
+        ctx.beginPath(); ctx.moveTo(cx+ca*r1, cy+sa*r1); ctx.lineTo(cx+ca*r2, cy+sa*r2);
+        ctx.lineWidth = lw; ctx.strokeStyle = stroke; ctx.stroke();
+      }
+      function drawTextOnRing(txt, angleDeg, radius, font='18px ui-sans-serif', fill='#eaf2ff'){
+        const a = deg2rad(angleDeg);
+        const x = cx + Math.cos(a)*radius, y = cy + Math.sin(a)*radius;
+        ctx.save(); ctx.translate(x,y); ctx.rotate(a + Math.PI/2);
+        ctx.fillStyle = fill; ctx.font = font; ctx.textAlign='center'; ctx.textBaseline='middle';
+        ctx.fillText(txt, 0, 0); ctx.restore();
+      }
+      function pad2(n){ return (n<10?'0':'')+n; }
+      function degMin(d){ let a=((d%360)+360)%360; const D=Math.floor(a%30); const M=Math.floor((a-Math.floor(a))*60); return `${pad2(D)}°${pad2(M)}′`; }
 
       ctx.clearRect(0,0,W,H);
-      drawCircle(R,3); drawCircle(R*0.88,1); drawCircle(R*0.72,1); drawCircle(R*0.58,1);
+      drawCircle(R,3); drawCircle(R*0.92,1); drawCircle(R*0.78,1); drawCircle(R*0.64,1);
 
-      // Place ASC at left (9 o'clock)
-      const rotation = table.rotationDeg;
+      const rotation = table.rotationDeg; // ASC at left
 
-      // House cusps
-      table.cusps.forEach((cusp, i)=>{
-        const ang = deg2rad(-cusp + rotation);
-        const x = cx + Math.cos(ang)*R;
-        const y = cy + Math.sin(ang)*R;
-        ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(x,y); ctx.strokeStyle='#1f2a38'; ctx.lineWidth=1.5; ctx.stroke();
-        const mid = deg2rad(-(cusp + 15) + rotation);
-        const labelR = R*0.96;
-        ctx.fillStyle='#eaf2ff'; ctx.font='16px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(table.houseLabels[i], cx+Math.cos(mid)*labelR, cy+Math.sin(mid)*labelR);
-      });
-
-      // Zodiac sign dividers
-      const signs = ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'];
-      for(let i=0;i<12;i++){
-        const lon = i*30;
-        const ang = deg2rad(-lon + rotation);
-        const x = cx + Math.cos(ang)*R;
-        const y = cy + Math.sin(ang)*R;
-        ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(x,y); ctx.strokeStyle='#162131'; ctx.lineWidth=1; ctx.stroke();
-        const midAng = deg2rad(-(lon+15)+rotation);
-        drawText(signs[i], cx+Math.cos(midAng)*R*1.04, cy+Math.sin(midAng)*R*1.04);
+      // 30° majors + 5° minors
+      for(let d=0; d<360; d+=5){
+        const major = (d%30===0);
+        drawTick(-(d)+rotation, R, R*(major?0.94:0.97), major?2:1, major?'#32445f':'#1f2a38');
       }
 
-      // Planet points
-      const glyph = { Sun:'☉', Moon:'☾', Mercury:'☿', Venus:'♀', Mars:'♂', Jupiter:'♃', Saturn:'♄', Uranus:'♅', Neptune:'♆', Pluto:'♇' };
-      const positions = {};
-      table.rows.forEach(row=>{
-        const ang = deg2rad(-(row.lon) + rotation);
-        const r = R*0.80;
-        const x = cx + Math.cos(ang)*r;
-        const y = cy + Math.sin(ang)*r;
-        ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fillStyle='#7cc0ff'; ctx.fill();
-        ctx.fillStyle='#001'; ctx.font='14px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(glyph[row.name] || row.name[0], x, y);
-        positions[row.name] = {x,y};
+      // Sign glyphs
+      for (let i=0;i<12;i++){
+        const mid=i*30+15; drawTextOnRing(signGlyph[i], -(mid)+rotation, R*1.02, '28px ui-sans-serif');
+      }
+
+      // Houses: rays + numbers
+      table.cusps.forEach((cusp,i)=>{
+        drawTick(-(cusp)+rotation, 0, R, 1.5, '#203045');
+        drawTextOnRing(String(i+1), -(cusp+15)+rotation, R*0.88, '18px ui-sans-serif', '#b8c6dd');
       });
 
-      // Aspect lines
-      const aspectStyle = {
-        'Conjunction':'#eaf2ff', 'Opposition':'#f7a6a6', 'Trine':'#a6f7a6', 'Square':'#f7d7a6', 'Sextile':'#a6d7f7', 'Quincunx':'#d0a6f7'
-      };
-      table.aspects.forEach(a=>{
-        const p1 = positions[a.p1], p2 = positions[a.p2];
-        if(!p1 || !p2) return;
-        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y);
-        ctx.strokeStyle = aspectStyle[a.type] || '#94a3b8'; ctx.lineWidth = 1.5; ctx.stroke();
+      // Planets with labels
+      const positions = {};
+      table.rows.forEach(row=>{
+        const lon=row.lon; const signIndex=Math.floor(((lon%360)+360)%360/30);
+        const label=(planetGlyph[row.name]||row.name)+" "+signGlyph[signIndex]+" "+degMin(lon);
+        const a = deg2rad(-(lon)+rotation);
+        const pr = R*0.80; const x=cx+Math.cos(a)*pr, y=cy+Math.sin(a)*pr;
+        ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fillStyle='#7cc0ff'; ctx.fill();
+        const lr=pr+28; const lx=cx+Math.cos(a)*lr, ly=cy+Math.sin(a)*lr;
+        ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(lx,ly); ctx.strokeStyle='#4b97d1'; ctx.lineWidth=1; ctx.stroke();
+        ctx.save(); ctx.translate(lx,ly); ctx.rotate(a); ctx.fillStyle='#eaf2ff'; ctx.font='16px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(label,0,0); ctx.restore();
+        positions[row.name]={x,y};
       });
+
+      // Aspects
+      const aspectStyle={Conjunction:'#eaf2ff',Opposition:'#ef9a9a',Trine:'#9ae59a',Square:'#f7d7a6',Sextile:'#9ac7ef',Quincunx:'#c9a4ef'};
+      table.aspects.forEach(a=>{ const p1=positions[a.p1], p2=positions[a.p2]; if(!p1||!p2) return; ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.strokeStyle=aspectStyle[a.type]||'#94a3b8'; ctx.lineWidth=1.5; ctx.stroke(); });
     </script>
     {% endif %}
   </div>
@@ -553,7 +618,7 @@ ABOUT = """
 <body><div class="wrap">
 <h1>About & current limits</h1>
 <ul>
-<li><b>Accuracy:</b> Skyfield + DE421. (Can switch to DE440s.)</li>
+<li><b>Accuracy:</b> Skyfield + DE440s (JPL). Swiss Ephemeris used for ayanamsha and ASC/MC if available.</li>
 <li><b>Sidereal:</b> Fagan/Bradley ayanamsa uses a polynomial approx. Swiss Ephemeris can be integrated for exact parity.</li>
 <li><b>Houses:</b> Equal only (for now). Other systems possible later.</li>
 <li><b>Aspects:</b> Six standard aspects with custom orbs.</li>
@@ -729,7 +794,7 @@ def chart():
         return render_template_string(
             LAYOUT,
             default_dt=default_dt,
-            default_tz='auto' if request.args.get("tz","auto")=='auto' else tz_name,
+            default_tz=tz_name,
             data=data,
             data_json=data_json,
             aspects=aspects_ui
