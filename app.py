@@ -1,4 +1,5 @@
-# -------- utilities --------"""
+# -------- utilities --------
+"""
 New Astrology Emerging — Switchboard (Local) with Houses + Aspects + Birthplace
 Now supports:
 - Birth time (user-entered local time)
@@ -6,7 +7,6 @@ Now supports:
 - Auto timezone detection from birthplace (or manual choose)
 - Text listing for planets and aspects (in addition to tables)
 - Fixed stars, prenatal charts, and historical research capabilities
-
 Requirements:
 flask
 gunicorn
@@ -30,6 +30,7 @@ from geopy.geocoders import Nominatim
 from timezonefinder import TimezoneFinder
 import requests
 import json
+
 # Initialize helpers
 app = Flask(__name__)
 geocoder = Nominatim(user_agent="nae-switchboard (contact: support@newastrology.app)", timeout=5)
@@ -75,20 +76,6 @@ FIXED_STARS = [
     {"name": "Algol", "lon": 56.14, "lat": 22.28, "mag": 2.12},      # ~26°08' Taurus
     {"name": "Castor", "lon": 109.94, "lat": 10.01, "mag": 1.57},    # ~19°56' Cancer
     {"name": "Pollux", "lon": 113.01, "lat": 6.68, "mag": 1.14},     # ~23°00' Cancer
-]
-    {"name":"Conjunction",   "angle":0.0,     "key":"conj",    "default_orb":12.0,  "color":"#2563eb"},
-    {"name":"Semi-Sextile",   "angle":30.0,    "key":"ssext",   "default_orb":10.0,  "color":"#2563eb"},
-    {"name":"Semi-Square",    "angle":45.0,    "key":"ssqr",    "default_orb":3.13,  "color":"#ef4444"},
-    {"name":"Septile",        "angle":51.26,   "key":"sept",    "default_orb":3.13,  "color":"#8b5cf6"},
-    {"name":"Sextile",        "angle":60.0,    "key":"sex",     "default_orb":5.21,  "color":"#2563eb"},
-    {"name":"Quintile",       "angle":72.0,    "key":"quin",    "default_orb":6.38,  "color":"#22c55e"},
-    {"name":"Square",         "angle":90.0,    "key":"sqr",     "default_orb":7.0,   "color":"#ef4444"},
-    {"name":"Bi-Septile",     "angle":102.51,  "key":"bisept",  "default_orb":5.5,   "color":"#8b5cf6"},
-    {"name":"Trine",          "angle":120.0,   "key":"tri",     "default_orb":10.3,  "color":"#2563eb"},
-    {"name":"Sesqui-Square",  "angle":135.0,   "key":"sesqsqr", "default_orb":4.3,   "color":"#ef4444"},
-    {"name":"Bi-Quintile",    "angle":144.0,   "key":"biquin",  "default_orb":4.3,   "color":"#22c55e"},
-    {"name":"Tri-Septile",    "angle":154.17,  "key":"trisept", "default_orb":5.46,  "color":"#8b5cf6"},
-    {"name":"Opposition",     "angle":180.0,   "key":"opp",     "default_orb":12.0,  "color":"#ef4444"},
 ]
 
 ASPECTS_DEF = [
@@ -240,6 +227,7 @@ def get_best_location_match(place_name: str):
             return results[0]
     except Exception:
         return None
+
 def normalize_deg(angle: float) -> float:
     a = angle % 360.0
     return a if a >= 0 else a + 360.0
@@ -405,7 +393,7 @@ def obliquity_deg(dt: datetime) -> float:
     try:
         import swisseph as swe  # type: ignore
         jd = julian_day_utc(dt)
-        eps, _, _ = swe.obl_ecl(jd, 1)
+        eps, *, * = swe.obl_ecl(jd, 1)
         return float(eps)
     except Exception:
         return mean_obliquity_laskar(dt)
@@ -629,6 +617,7 @@ def find_ascendant_at_longitude(target_lon: float, around_date: datetime,
         
     except Exception:
         return None
+
 def find_fixed_star_conjunctions(longs: dict, orb: float = 1.0) -> list[dict]:
     """Find conjunctions between planets and fixed stars within orb."""
     conjunctions = []
@@ -816,6 +805,158 @@ LAYOUT = """
             <label>Name (optional)</label>
             <input name="person" placeholder="Full name" value="{{ data['person'] if data else '' }}">
           </div>
+          <div>
+            <label>Birthplace (city, country)</label>
+            <input name="place" placeholder="Boulder, CO" value="{{ data['place'] if data else '' }}">
+          </div>
+        </div>
+        <div class="row2">
+          <div>
+            <label>Local birth date & time</label>
+            <input type="datetime-local" name="dt" value="{{ default_dt }}">
+          </div>
+          <div>
+            <label>Timezone</label>
+            <select name="tz">
+              {% if data %}
+                <option value="{{ data['tz'] }}" selected>{{ data['tz'] }}</option>
+              {% endif %}
+              <option value="auto" {% if (not data) or (default_tz=='auto') %}selected{% endif %}>Auto (by birthplace)</option>
+              <option>UTC</option>
+              <option>America/New_York</option>
+              <option>America/Chicago</option>
+              <option>America/Denver</option>
+              <option>America/Los_Angeles</option>
+            </select>
+          </div>
+        </div>
+        <details open>
+          <summary>Advanced (lat/lon, frame, zodiac, houses, aspects)</summary>
+          <div class="row2" style="margin-top:8px;">
+            <div><label>Lat</label><input name="lat" value="{{ data['lat'] if data else '' }}" placeholder="40.015" /></div>
+            <div><label>Lon</label><input name="lon" value="{{ data['lon'] if data else '' }}" placeholder="-105.270" /></div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Frame</label>
+              <select name="frame">
+                <option value="geo" {% if not data or data['frame']=='geo' %}selected{% endif %}>Geocentric</option>
+                <option value="helio" {% if data and data['frame']=='helio' %}selected{% endif %}>Heliocentric</option>
+              </select>
+            </div>
+            <div>
+              <label>Zodiac</label>
+              <select name="zodiac">
+                <option value="sidereal" {% if not data or data['zodiac']=='Sidereal' %}selected{% endif %}>Sidereal (Fagan/Bradley)</option>
+                <option value="tropical" {% if data and data['zodiac']=='Tropical' %}selected{% endif %}>Tropical</option>
+              </select>
+            </div>
+            <div>
+              <label>Equal Houses</label>
+              <select name="house_mode">
+                <option value="asc_middle" {% if (not data) or (data.get('house_mode')=='asc_middle') %}selected{% endif %}>Asc in the middle</option>
+                <option value="asc_cusp" {% if data and data.get('house_mode')=='asc_cusp' %}selected{% endif %}>Asc on cusp</option>
+              </select>
+            </div>
+            <div>
+              <label>House Direction</label>
+              <select name="house_direction">
+                <option value="counterclockwise" {% if (not data) or (data.get('house_direction')=='counterclockwise') %}selected{% endif %}>Counterclockwise</option>
+                <option value="clockwise" {% if data and data.get('house_direction')=='clockwise' %}selected{% endif %}>Clockwise</option>
+              </select>
+            </div>
+          </div>
+          <div style="margin-top:8px;">
+            <details>
+              <summary style="cursor:pointer; font-weight:600; color:var(--muted);">Prenatal Chart</summary>
+              <div style="margin-top:8px;">
+                <label style="display:flex; align-items:center; gap:8px;">
+                  <input type="checkbox" name="show_prenatal" {% if data and data.get('show_prenatal') %}checked{% endif %}>
+                  Calculate prenatal/conception chart (Hermetic Rule)
+                </label>
+                <div class="muted" style="margin-top:4px; font-size:12px;">
+                  Uses traditional Hermetic Rule: Birth Asc ↔ Prenatal Moon or Birth Moon ↔ Prenatal Asc
+                </div>
+              </div>
+            </details>
+          </div>
+          <div style="margin-top:8px;">
+            <details>
+              <summary style="cursor:pointer; font-weight:600; color:var(--muted);">Fixed Stars</summary>
+              <div style="margin-top:8px;">
+                <label style="display:flex; align-items:center; gap:8px;">
+                  <input type="checkbox" name="show_fixed_stars" {% if data and data.get('show_fixed_stars') %}checked{% endif %}>
+                  Show fixed star conjunctions
+                </label>
+                <div style="margin-top:6px;">
+                  <label style="font-size:12px;">Orb (degrees)</label>
+                  <input name="fixed_star_orb" value="{{ data.get('fixed_star_orb', '1.0') if data else '1.0' }}" style="max-width:60px; margin-left:8px;">
+                </div>
+              </div>
+            </details>
+          </div>
+          <div style="margin-top:8px;">
+            <details>
+              <summary style="cursor:pointer; font-weight:600; color:var(--muted);">Aspects</summary>
+              <div style="margin-top:8px;">
+                <div class="muted" style="margin:6px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                  Quick:
+                  <button type="button" class="pill" id="aspectsAll">All</button>
+                  <button type="button" class="pill" id="aspectsNone">None</button>
+                  <button type="button" class="pill" id="aspectsDefaults">Defaults</button>
+                </div>
+                {% for a in aspects %}
+                  <div style="display:flex;align-items:center;gap:8px;margin:4px 0;">
+                    <input type="checkbox" name="{{a.key}}_on" data-aspect="{{a.key}}" {% if a.on %}checked{% endif %}>
+                    <span class="swatch" style="background: {{ a.color }}"></span>
+                    <span style="min-width:150px;">{{a.name}}</span>
+                    <span class="muted">orb</span>
+                    <input name="{{a.key}}_orb" value="{{a.orb}}" data-default-orb="{{a.default_orb}}" style="max-width:80px;">
+                  </div>
+                {% endfor %}
+              </div>
+            </details>
+          </div>
+        </details>
+        <div class="actions">
+          <button type="submit">Compute Chart</button>
+          <button type="button" id="newChartBtn">New Chart</button>
+          <button type="button" id="printBtn">Print / Save PDF</button>
+          <a class="pill" href="{{ url_for('about') }}">About & limits</a>
+        </div>
+      </form>
+      <script>
+        (function(){
+          const btn = document.getElementById('newChartBtn');
+          if (btn) {
+            btn.addEventListener('click', function(){
+              const f = btn.closest('form');
+              if (!f) return;
+              const tzSel = f.querySelector('select[name="tz"]'); if (tzSel) tzSel.value = 'auto';
+              const place = f.querySelector('input[name="place"]'); if (place) place.value = '';
+              const lat = f.querySelector('input[name="lat"]'); if (lat) lat.value = '';
+              const lon = f.querySelector('input[name="lon"]'); if (lon) lon.value = '';
+              const elev = f.querySelector('input[name="elev"]'); if (elev) elev.value = '';
+              const person = f.querySelector('input[name="person"]'); if (person) person.value = '';
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+          }
+          // Print button
+          const pbtn = document.getElementById('printBtn');
+          if (pbtn) pbtn.addEventListener('click', ()=> window.print());
+          // Aspect quick toggles
+          const f = document.querySelector('form');
+          function setAll(on){ f.querySelectorAll('input[type="checkbox"][data-aspect]').forEach(cb=>{ cb.checked = !!on; }); }
+          function setDefaults(){ f.querySelectorAll('input[name$="_orb"][data-default-orb]').forEach(inp=>{ inp.value = inp.getAttribute('data-default-orb'); }); }
+          const bAll = document.getElementById('aspectsAll');
+          const bNone = document.getElementById('aspectsNone');
+          const bDef = document.getElementById('aspectsDefaults');
+          if (bAll) bAll.addEventListener('click', ()=> setAll(true));
+          if (bNone) bNone.addEventListener('click', ()=> setAll(false));
+          if (bDef) bDef.addEventListener('click', ()=> setDefaults());
+        })();
+      </script>
+    </div>
     
     <!-- Professional Chart Layout (Print Only) -->
     {% if data %}
@@ -904,202 +1045,6 @@ LAYOUT = """
     </div>
     {% endif %}
     
-    <script>
-      // Copy chart to print canvas
-      function setupPrintChart() {
-        const mainCanvas = document.getElementById('wheel');
-        const printCanvas = document.getElementById('printWheel');
-        if (mainCanvas && printCanvas) {
-          const printCtx = printCanvas.getContext('2d');
-          printCtx.drawImage(mainCanvas, 0, 0, 480, 480);
-        }
-      }
-      
-      // Setup print chart when page loads
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', setupPrintChart);
-      } else {
-        setupPrintChart();
-      }
-      
-      // Re-setup when chart updates
-      const originalBtn = document.getElementById('printBtn');
-      if (originalBtn) {
-        originalBtn.addEventListener('click', () => {
-          setTimeout(setupPrintChart, 100);
-          setTimeout(() => window.print(), 200);
-        });
-      }
-          <div>
-            <label>Birthplace (city, country)</label>
-            <input name="place" placeholder="Boulder, CO" value="{{ data['place'] if data else '' }}">
-          </div>
-        </div>
-        <div class="row2">
-          <div>
-            <label>Local birth date & time</label>
-            <input type="datetime-local" name="dt" value="{{ default_dt }}">
-          </div>
-          <div>
-            <label>Timezone</label>
-            <select name="tz">
-              {% if data %}
-                <option value="{{ data['tz'] }}" selected>{{ data['tz'] }}</option>
-              {% endif %}
-          {% if data['show_prenatal'] and data['prenatal'] %}
-          <div class="section-title">Prenatal Chart (Hermetic Rule)</div>
-          {% if data['prenatal'].get('error') %}
-            <p class="muted">Error calculating prenatal chart: {{ data['prenatal']['error'] }}</p>
-          {% else %}
-            <div style="margin-bottom:12px; padding:8px; background:#f8fafc; border-radius:8px; font-size:14px;">
-              <strong>{{ data['prenatal']['rule'] }}</strong><br>
-              <span class="muted">{{ data['prenatal']['datetime'] }} ({{ data['prenatal']['days_before'] }} days before birth)</span><br>
-              <span class="muted">Asc: {{ data['prenatal']['asc_fmt'] }} • MC: {{ data['prenatal']['mc_fmt'] }}</span>
-            </div>
-            <table>
-              <thead><tr><th>Body</th><th>Prenatal Position</th></tr></thead>
-              <tbody>
-                {% for row in data['prenatal']['table'] %}
-                <tr><td>{{ row.name }}</td><td>{{ row.lon_fmt }}</td></tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          {% endif %}
-          {% endif %}
-              <option value="auto" {% if (not data) or (default_tz=='auto') %}selected{% endif %}>Auto (by birthplace)</option>
-              <option>UTC</option>
-              <option>America/New_York</option>
-              <option>America/Chicago</option>
-              <option>America/Denver</option>
-              <option>America/Los_Angeles</option>
-            </select>
-          </div>
-        </div>
-        <details open>
-          <summary>Advanced (lat/lon, frame, zodiac, houses, aspects)</summary>
-          <div class="row2" style="margin-top:8px;">
-            <div><label>Lat</label><input name="lat" value="{{ data['lat'] if data else '' }}" placeholder="40.015" /></div>
-            <div><label>Lon</label><input name="lon" value="{{ data['lon'] if data else '' }}" placeholder="-105.270" /></div>
-          </div>
-          <div class="row">
-            <div>
-              <label>Frame</label>
-              <select name="frame">
-                <option value="geo" {% if not data or data['frame']=='geo' %}selected{% endif %}>Geocentric</option>
-                <option value="helio" {% if data and data['frame']=='helio' %}selected{% endif %}>Heliocentric</option>
-              </select>
-            </div>
-            <div>
-              <label>Zodiac</label>
-              <select name="zodiac">
-                <option value="sidereal" {% if not data or data['zodiac']=='Sidereal' %}selected{% endif %}>Sidereal (Fagan/Bradley)</option>
-                <option value="tropical" {% if data and data['zodiac']=='Tropical' %}selected{% endif %}>Tropical</option>
-              </select>
-            </div>
-            <div>
-              <label>Equal Houses</label>
-              <select name="house_mode">
-                <option value="asc_middle" {% if (not data) or (data.get('house_mode')=='asc_middle') %}selected{% endif %}>Asc in the middle</option>
-                <option value="asc_cusp" {% if data and data.get('house_mode')=='asc_cusp' %}selected{% endif %}>Asc on cusp</option>
-              </select>
-            </div>
-            <div>
-              <label>House Direction</label>
-              <select name="house_direction">
-                <option value="counterclockwise" {% if (not data) or (data.get('house_direction')=='counterclockwise') %}selected{% endif %}>Counterclockwise</option>
-                <option value="clockwise" {% if data and data.get('house_direction')=='clockwise' %}selected{% endif %}>Clockwise</option>
-              </select>
-            </div>
-          </div>
-          <div style="margin-top:8px;">
-            <details>
-              <summary style="cursor:pointer; font-weight:600; color:var(--muted);">Prenatal Chart</summary>
-              <div style="margin-top:8px;">
-                <label style="display:flex; align-items:center; gap:8px;">
-                  <input type="checkbox" name="show_prenatal" {% if data and data.get('show_prenatal') %}checked{% endif %}>
-                  Calculate prenatal/conception chart (Hermetic Rule)
-                </label>
-                <div class="muted" style="margin-top:4px; font-size:12px;">
-                  Uses traditional Hermetic Rule: Birth Asc ↔ Prenatal Moon or Birth Moon ↔ Prenatal Asc
-                </div>
-              </div>
-            </details>
-          </div>
-              <summary style="cursor:pointer; font-weight:600; color:var(--muted);">Fixed Stars</summary>
-              <div style="margin-top:8px;">
-                <label style="display:flex; align-items:center; gap:8px;">
-                  <input type="checkbox" name="show_fixed_stars" {% if data and data.get('show_fixed_stars') %}checked{% endif %}>
-                  Show fixed star conjunctions
-                </label>
-                <div style="margin-top:6px;">
-                  <label style="font-size:12px;">Orb (degrees)</label>
-                  <input name="fixed_star_orb" value="{{ data.get('fixed_star_orb', '1.0') if data else '1.0' }}" style="max-width:60px; margin-left:8px;">
-                </div>
-              </div>
-            </details>
-          </div>
-          <div style="margin-top:8px;">
-            <details>
-              <summary style="cursor:pointer; font-weight:600; color:var(--muted);">Aspects</summary>
-              <div style="margin-top:8px;">
-                <div class="muted" style="margin:6px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                  Quick:
-                  <button type="button" class="pill" id="aspectsAll">All</button>
-                  <button type="button" class="pill" id="aspectsNone">None</button>
-                  <button type="button" class="pill" id="aspectsDefaults">Defaults</button>
-                </div>
-                {% for a in aspects %}
-                  <div style="display:flex;align-items:center;gap:8px;margin:4px 0;">
-                    <input type="checkbox" name="{{a.key}}_on" data-aspect="{{a.key}}" {% if a.on %}checked{% endif %}>
-                    <span class="swatch" style="background: {{ a.color }}"></span>
-                    <span style="min-width:150px;">{{a.name}}</span>
-                    <span class="muted">orb</span>
-                    <input name="{{a.key}}_orb" value="{{a.orb}}" data-default-orb="{{a.default_orb}}" style="max-width:80px;">
-                  </div>
-                {% endfor %}
-              </div>
-            </details>
-          </div>
-        </details>
-        <div class="actions">
-          <button type="submit">Compute Chart</button>
-          <button type="button" id="newChartBtn">New Chart</button>
-          <button type="button" id="printBtn">Print / Save PDF</button>
-          <a class="pill" href="{{ url_for('about') }}">About & limits</a>
-        </div>
-      </form>
-      <script>
-        (function(){
-          const btn = document.getElementById('newChartBtn');
-          if (btn) {
-            btn.addEventListener('click', function(){
-              const f = btn.closest('form');
-              if (!f) return;
-              const tzSel = f.querySelector('select[name="tz"]'); if (tzSel) tzSel.value = 'auto';
-              const place = f.querySelector('input[name="place"]'); if (place) place.value = '';
-              const lat = f.querySelector('input[name="lat"]'); if (lat) lat.value = '';
-              const lon = f.querySelector('input[name="lon"]'); if (lon) lon.value = '';
-              const elev = f.querySelector('input[name="elev"]'); if (elev) elev.value = '';
-              const person = f.querySelector('input[name="person"]'); if (person) person.value = '';
-              window.scrollTo({ top: 0, behavior: 'smooth' });
-            });
-          }
-          // Print button
-          const pbtn = document.getElementById('printBtn');
-          if (pbtn) pbtn.addEventListener('click', ()=> window.print());
-          // Aspect quick toggles
-          const f = document.querySelector('form');
-          function setAll(on){ f.querySelectorAll('input[type="checkbox"][data-aspect]').forEach(cb=>{ cb.checked = !!on; }); }
-          function setDefaults(){ f.querySelectorAll('input[name$="_orb"][data-default-orb]').forEach(inp=>{ inp.value = inp.getAttribute('data-default-orb'); }); }
-          const bAll = document.getElementById('aspectsAll');
-          const bNone = document.getElementById('aspectsNone');
-          const bDef = document.getElementById('aspectsDefaults');
-          if (bAll) bAll.addEventListener('click', ()=> setAll(true));
-          if (bNone) bNone.addEventListener('click', ()=> setAll(false));
-          if (bDef) bDef.addEventListener('click', ()=> setDefaults());
-        })();
-      </script>
-    </div>
     {% if data %}
     <div class="card minihead" style="margin-top:16px;">
       <div><b>{{ data['person'] or '—' }}</b></div>
@@ -1176,6 +1121,28 @@ LAYOUT = """
             </tbody>
           </table>
           {% endif %}
+          
+          {% if data['show_prenatal'] and data['prenatal'] %}
+          <div class="section-title">Prenatal Chart (Hermetic Rule)</div>
+          {% if data['prenatal'].get('error') %}
+            <p class="muted">Error calculating prenatal chart: {{ data['prenatal']['error'] }}</p>
+          {% else %}
+            <div style="margin-bottom:12px; padding:8px; background:#f8fafc; border-radius:8px; font-size:14px;">
+              <strong>{{ data['prenatal']['rule'] }}</strong><br>
+              <span class="muted">{{ data['prenatal']['datetime'] }} ({{ data['prenatal']['days_before'] }} days before birth)</span><br>
+              <span class="muted">Asc: {{ data['prenatal']['asc_fmt'] }} • MC: {{ data['prenatal']['mc_fmt'] }}</span>
+            </div>
+            <table>
+              <thead><tr><th>Body</th><th>Prenatal Position</th></tr></thead>
+              <tbody>
+                {% for row in data['prenatal']['table'] %}
+                <tr><td>{{ row.name }}</td><td>{{ row.lon_fmt }}</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          {% endif %}
+          {% endif %}
+          
           <div class="section-title">Orbs Used</div>
           <table>
             <thead><tr><th>Aspect</th><th>Orb (°)</th></tr></thead>
@@ -1280,6 +1247,32 @@ LAYOUT = """
         if (Math.abs(r - R) < 24){ const sIdx=Math.floor(lon/30); const html=`${signGlyph[sIdx]} <b>${signNames[sIdx]}</b><br>${degMin(lon)}`; showTip(html,e.clientX,e.clientY); return; }
         hideTip();
       });
+      
+      // Copy chart to print canvas
+      function setupPrintChart() {
+        const mainCanvas = document.getElementById('wheel');
+        const printCanvas = document.getElementById('printWheel');
+        if (mainCanvas && printCanvas) {
+          const printCtx = printCanvas.getContext('2d');
+          printCtx.drawImage(mainCanvas, 0, 0, 480, 480);
+        }
+      }
+      
+      // Setup print chart when page loads
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', setupPrintChart);
+      } else {
+        setupPrintChart();
+      }
+      
+      // Re-setup when chart updates
+      const originalBtn = document.getElementById('printBtn');
+      if (originalBtn) {
+        originalBtn.addEventListener('click', () => {
+          setTimeout(setupPrintChart, 100);
+          setTimeout(() => window.print(), 200);
+        });
+      }
     </script>
     {% endif %}
   </div>
@@ -1379,7 +1372,6 @@ def chart():
         house_direction = request.args.get("house_direction", "counterclockwise")
         show_fixed_stars = request.args.get("show_fixed_stars") is not None
         fixed_star_orb = float(request.args.get("fixed_star_orb", "1.0"))
-        show_fixed_stars = request.args.get("show_fixed_stars") is not None
         show_prenatal = request.args.get("show_prenatal") is not None
         
         # Aspect options (default ON only on first submit)
@@ -1453,8 +1445,8 @@ def chart():
             
             # Find the equivalent time after the spring-forward
             # When 2:00 AM becomes 3:00 AM, 2:30 AM should become 3:30 AM
-            dt_before = tz.localize(local_dt - datetime.timedelta(hours=2), is_dst=False)
-            dt_after = tz.localize(local_dt + datetime.timedelta(hours=2), is_dst=True)
+            dt_before = tz.localize(local_dt - timedelta(hours=2), is_dst=False)
+            dt_after = tz.localize(local_dt + timedelta(hours=2), is_dst=True)
             
             # Calculate the DST offset change
             dst_offset = dt_after.dst() - dt_before.dst()
@@ -1465,7 +1457,7 @@ def chart():
         
         # Display strings
         dt_disp = dt.strftime("%Y-%m-%d %H:%M")
-        offset_td = dt.utcoffset() or (dt - dt)
+        offset_td = dt.utcoffset() or timedelta(0)
         total_min = int(offset_td.total_seconds() // 60)
         sign = "+" if total_min >= 0 else "-"
         hh = abs(total_min) // 60
