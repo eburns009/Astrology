@@ -306,24 +306,24 @@ def fagan_bradley_ayanamsa(dt: datetime) -> float:
         ay = float(swe.get_ayanamsa_ut(jd))
         return normalize_deg(ay)
     except (ImportError, Exception):
-        # Fallback calculation for Fagan-Bradley SVP
-        # Reference: Jan 1, 1950, 0h UT = 24.042044444 degrees
-        # Rate: 50.29 arcseconds per year
+        # More precise Fagan-Bradley calculation
+        # Using the standard reference: Jan 1, 1950, 0h UT = 24°02'31.36"
         
-        # Calculate decimal years from Jan 1, 1950
-        ref_date = datetime(1950, 1, 1, tzinfo=_tz.utc)
-        time_diff = dt_utc - ref_date
-        years_from_1950 = time_diff.total_seconds() / (365.25 * 24 * 3600)
+        # Calculate Julian Day
+        jd = julian_day_utc(dt_utc)
         
-        # Fagan-Bradley SVP calculation
-        # Base ayanamsa on Jan 1, 1950: 24.042044444 degrees
+        # Days since J1950.0 (Jan 1, 1950, 0h UT = JD 2433282.5)
+        j1950 = 2433282.5
+        days_since_1950 = jd - j1950
+        years_since_1950 = days_since_1950 / 365.25
+        
+        # Fagan-Bradley: 24°02'31.36" = 24.042044444° at 1950.0
+        # Rate: 50.29 arcseconds per year = 0.013969444 degrees per year
         base_ayanamsa = 24.042044444
+        annual_rate = 50.29 / 3600.0  # Convert arcseconds to degrees
         
-        # Rate: 50.29 arcseconds per year = 50.29/3600 degrees per year
-        annual_rate = 50.29 / 3600.0
-        
-        # Calculate ayanamsa
-        ay = base_ayanamsa + (years_from_1950 * annual_rate)
+        # Calculate ayanamsa for the given date
+        ay = base_ayanamsa + (years_since_1950 * annual_rate)
         
         return normalize_deg(ay)
 
@@ -1606,6 +1606,7 @@ def chart():
             if name not in longs:
                 continue
             lam = longs[name]
+            lam_trop = longs_trop.get(name, 0)
             # Add decimal degrees for debugging/verification
             sign_index = int(floor(lam / 30.0)) % 12
             in_sign_decimal = lam % 30.0
@@ -1614,7 +1615,8 @@ def chart():
                 "lon": lam, 
                 "lon_fmt": format_longitude(lam),
                 "decimal_degrees": round(in_sign_decimal, 2),
-                "sign": ZODIAC_SIGNS[sign_index]
+                "sign": ZODIAC_SIGNS[sign_index],
+                "tropical_lon": lam_trop
             })
         
         houses_rows = [{"idx": i+1, "lon": c, "lon_fmt": format_longitude(c)} for i, c in enumerate(cusps)]
