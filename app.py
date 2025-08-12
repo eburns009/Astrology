@@ -325,6 +325,16 @@ LAYOUT = """
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .card, .wrap { box-shadow: none; }
+      /* Hide UI and grid tables; keep only chart + text listing */
+      form, .actions, details, .minihead { display: none !important; }
+      .grid { grid-template-columns: 1fr !important; }
+      .grid table, .grid .section-title { display: none !important; }
+      .report-text { display: block !important; }
+      /* Fit one Letter page */
+      canvas { width: 7.0in !important; height: 7.0in !important; }
+      pre { font-size: 11px; line-height: 1.35; white-space: pre-wrap; }
+    }
+      .card, .wrap { box-shadow: none; }
       form, .actions, details { display: none !important; }
       .grid { grid-template-columns: 1fr !important; }
       canvas { width: 7.5in !important; height: 7.5in !important; }
@@ -403,12 +413,18 @@ LAYOUT = """
           </div>
           <div style="margin-top:8px;">
             <label>Aspects</label>
+            <div class="muted" style="margin:6px 0; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+              Quick:
+              <button type="button" class="pill" id="aspectsAll">All</button>
+              <button type="button" class="pill" id="aspectsNone">None</button>
+              <button type="button" class="pill" id="aspectsDefaults">Defaults</button>
+            </div>
             {% for a in aspects %}
               <div style="display:flex;align-items:center;gap:8px;margin:4px 0;">
-                <input type="checkbox" name="{{a.key}}_on" {% if a.on %}checked{% endif %}>
+                <input type="checkbox" name="{{a.key}}_on" data-aspect="{{a.key}}" {% if a.on %}checked{% endif %}>
                 <span style="min-width:120px;">{{a.name}}</span>
                 <span class="muted">orb</span>
-                <input name="{{a.key}}_orb" value="{{a.orb}}" style="max-width:80px;">
+                <input name="{{a.key}}_orb" value="{{a.orb}}" data-default-orb="{{a.default_orb}}" style="max-width:80px;">
               </div>
             {% endfor %}
           </div>
@@ -422,18 +438,29 @@ LAYOUT = """
       <script>
         (function(){
           const btn = document.getElementById('newChartBtn');
-          if (!btn) return;
-          btn.addEventListener('click', function(){
-            const f = btn.closest('form');
-            if (!f) return;
-            const tzSel = f.querySelector('select[name="tz"]'); if (tzSel) tzSel.value = 'auto';
-            const place = f.querySelector('input[name="place"]'); if (place) place.value = '';
-            const lat = f.querySelector('input[name="lat"]'); if (lat) lat.value = '';
-            const lon = f.querySelector('input[name="lon"]'); if (lon) lon.value = '';
-            const elev = f.querySelector('input[name="elev"]'); if (elev) elev.value = '';
-            const person = f.querySelector('input[name="person"]'); if (person) person.value = '';
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-          });
+          if (btn) {
+            btn.addEventListener('click', function(){
+              const f = btn.closest('form');
+              if (!f) return;
+              const tzSel = f.querySelector('select[name="tz"]'); if (tzSel) tzSel.value = 'auto';
+              const place = f.querySelector('input[name="place"]'); if (place) place.value = '';
+              const lat = f.querySelector('input[name="lat"]'); if (lat) lat.value = '';
+              const lon = f.querySelector('input[name="lon"]'); if (lon) lon.value = '';
+              const elev = f.querySelector('input[name="elev"]'); if (elev) elev.value = '';
+              const person = f.querySelector('input[name="person"]'); if (person) person.value = '';
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            });
+          }
+          // Aspect quick toggles
+          const f = document.querySelector('form');
+          function setAll(on){ f.querySelectorAll('input[type="checkbox"][data-aspect]').forEach(cb=>{ cb.checked = !!on; }); }
+          function setDefaults(){ f.querySelectorAll('input[name$="_orb"][data-default-orb]').forEach(inp=>{ inp.value = inp.getAttribute('data-default-orb'); }); }
+          const bAll = document.getElementById('aspectsAll');
+          const bNone = document.getElementById('aspectsNone');
+          const bDef = document.getElementById('aspectsDefaults');
+          if (bAll) bAll.addEventListener('click', ()=> setAll(true));
+          if (bNone) bNone.addEventListener('click', ()=> setAll(false));
+          if (bDef) bDef.addEventListener('click', ()=> setDefaults());
         })();
       </script>
     </div>
@@ -508,6 +535,19 @@ LAYOUT = """
           </table>
         </div>
       </div>
+    </div>
+
+    <div class="card report-text" style="margin-top:12px;">
+      <h3>Text listing</h3>
+      <pre class="muted">Planets:
+{% for row in data['table'] %} - {{ row.name }}: {{ row.lon_fmt }}
+{% endfor %}Aspects:
+{% if data['aspects']|length == 0 %} - (none within chosen orbs)
+{% else %}
+{% for a in data['aspects'] %} - {{ a.type }}: {{ a.p1 }} – {{ a.p2 }} (Δ {{ a.delta }}°)
+{% endfor %}
+{% endif %}
+      </pre>
     </div>
 
     <script>
@@ -628,7 +668,7 @@ def index():
     now_local = datetime.now(pytz.timezone("America/Denver")).replace(second=0, microsecond=0)
     default_dt = now_local.strftime("%Y-%m-%dT%H:%M")
     aspects = [
-        {"key": spec["key"], "name": spec["name"], "orb": spec["default_orb"], "on": True}
+        {"key": spec["key"], "name": spec["name"], "orb": spec["default_orb"], "default_orb": spec["default_orb"], "on": True}
         for spec in ASPECTS_DEF
     ]
     return render_template_string(
@@ -722,7 +762,7 @@ def chart():
             "aspects": [{"p1": a['p1'], "p2": a['p2'], "type": a['type'], "delta": a['delta']} for a in aspects_found],
         }
         aspects_ui = [
-            {"key": spec["key"], "name": spec["name"], "orb": aspect_opts.get(spec["key"]+"_orb", spec["default_orb"]), "on": aspect_opts.get(spec["key"]+"_on", True)}
+            {"key": spec["key"], "name": spec["name"], "orb": aspect_opts.get(spec["key"]+"_orb", spec["default_orb"]), "default_orb": spec["default_orb"], "on": aspect_opts.get(spec["key"]+"_on", True)}
             for spec in ASPECTS_DEF
         ]
         default_dt = local_dt.strftime("%Y-%m-%dT%H:%M")
