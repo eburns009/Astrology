@@ -668,13 +668,15 @@ def about():
     return ABOUT
 
 # Warm important resources once per process (timescale + ephemeris)
-@app.before_first_request
 def warm_start():
     try:
         get_timescale()
         get_ephemeris()
     except Exception:
         pass
+
+# Call warm_start when the module is imported
+warm_start()
 
 @app.route("/")
 def index():
