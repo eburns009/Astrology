@@ -362,6 +362,7 @@ LAYOUT = """
     canvas { width: 9in; height: 9in; }
   }
   @page { size: letter; margin: 0.5in; }
+  .tooltip{ position:fixed; z-index:1000; background:#0e1520; color:#eaf2ff; border:1px solid #1f2a38; border-radius:8px; padding:6px 8px; font-size:13px; pointer-events:none; box-shadow:0 6px 20px rgba(0,0,0,.35); }
   </style>
 </head>
 <body>
@@ -474,6 +475,7 @@ LAYOUT = """
     <div class="grid" style="margin-top:16px;">
       <div class="card">
         <canvas id="wheel" width="860" height="860"></canvas>
+        <div id="chartTip" class="tooltip" style="display:none"></div>
       </div>
       <div class="card">
         <h3>Positions ({{ data['frame'].upper() }} · {{ data['zodiac'].title() }})</h3>
@@ -515,14 +517,30 @@ LAYOUT = """
 
         <div class="section-title">Aspects</div>
         <table>
-          <thead><tr><th>Aspect</th><th>Between</th><th>Exact</th><th>Δ</th></tr></thead>
+          <thead><tr><th>Aspect</th><th>Between</th><th>Exact</th><th>Orb (°)</th><th>Δ</th></tr></thead>
           <tbody>
             {% for a in data['aspects'] %}
-            <tr><td>{{ a.type }}</td><td>{{ a.p1 }} – {{ a.p2 }}</td><td>{{ a.angle }}°</td><td>{{ a.delta }}°</td></tr>
+            <tr>
+              <td>{{ a.type }}</td>
+              <td>{{ a.p1 }} – {{ a.p2 }}</td>
+              <td>{{ a.angle }}°</td>
+              <td>{{ data['aspect_orbs'][a.type] }}</td>
+              <td>{{ a.delta }}°</td>
+            </tr>
             {% endfor %}
             {% if data['aspects']|length == 0 %}
-              <tr><td colspan="4" class="muted">No aspects within chosen orbs.</td></tr>
+              <tr><td colspan="5" class="muted">No aspects within chosen orbs.</td></tr>
             {% endif %}
+          </tbody>
+        </table>
+
+        <div class="section-title">Orbs Used</div>
+        <table>
+          <thead><tr><th>Aspect</th><th>Orb (°)</th></tr></thead>
+          <tbody>
+            {% for a in aspects %}
+              <tr><td>{{ a.name }}</td><td>{{ a.orb }}</td></tr>
+            {% endfor %}
           </tbody>
         </table>
 
@@ -654,6 +672,52 @@ LAYOUT = """
     ctx.font = '26px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.strokeStyle = '#0b0f14'; ctx.lineWidth = 3; ctx.strokeText(g, p.x, p.y);
     ctx.fillStyle = '#ffffff'; ctx.fillText(g, p.x, p.y);
+  });
+
+  // === Hover tooltips for planets and zodiac ring ===
+  const tipEl = document.getElementById('chartTip');
+  const signNames = ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'];
+  function norm360(a){ return ((a%360)+360)%360; }
+  function showTip(html, clientX, clientY){
+    tipEl.innerHTML = html; tipEl.style.display='block';
+    const pad=14; tipEl.style.left = (clientX + pad) + 'px'; tipEl.style.top = (clientY + pad) + 'px';
+  }
+  function hideTip(){ tipEl.style.display='none'; }
+
+  canvas.addEventListener('mouseleave', hideTip);
+  canvas.addEventListener('mousemove', (e)=>{
+    const rect = canvas.getBoundingClientRect();
+    // account for CSS scaling vs canvas pixels
+    const scaleX = canvas.width / rect.width, scaleY = canvas.height / rect.height;
+    const mx = (e.clientX - rect.left) * scaleX;
+    const my = (e.clientY - rect.top) * scaleY;
+
+    const dx = mx - cx, dy = my - cy; const r = Math.hypot(dx,dy);
+    const ang = Math.atan2(dy, dx); // radians
+    const lon = norm360(-ang*180/Math.PI + table.rotationDeg);
+
+    // 1) Planet hit test (within 22px of planet center)
+    let closest = null, cd = 1e9;
+    table.rows.forEach(row=>{
+      const p = positions[row.name]; if(!p) return;
+      const d = Math.hypot(mx - p.x, my - p.y);
+      if (d < cd){ cd = d; closest = {row, p}; }
+    });
+    if (closest && cd <= 22){
+      const name = closest.row.name;
+      const sIdx = Math.floor(norm360(closest.p.lon)/30);
+      const html = `<b>${planetGlyph[name]||name}</b> ${name}<br>${signGlyph[sIdx]} ${signNames[sIdx]} · ${degMin(closest.p.lon)}`;
+      showTip(html, e.clientX, e.clientY); return;
+    }
+
+    // 2) Zodiac ring hover (near outer ring)
+    if (Math.abs(r - R) < 24){
+      const sIdx = Math.floor(lon/30);
+      const html = `${signGlyph[sIdx]} <b>${signNames[sIdx]}</b><br>${degMin(lon)}`;
+      showTip(html, e.clientX, e.clientY); return;
+    }
+
+    hideTip();
   });
 </script>
     {% endif %}
@@ -799,6 +863,8 @@ def chart():
         # Aspects
         aspects_list = find_aspects(longs, aspect_opts)
 
+        aspect_orbs_dict = { spec['name']: aspect_opts.get(spec['key']+"_orb", spec['default_orb']) for spec in ASPECTS_DEF }
+
         # House label order (numbering)
         labels = [f"{i}" for i in range(1,13)]  # visual orientation is handled by rotation
 
@@ -819,6 +885,7 @@ def chart():
             'houses': [{'idx': (i+1), 'lon_fmt': format_longitude(l)} for i, l in enumerate(cusps)],
             'aspects': aspects_list,
             'person': person,
+            'aspect_orbs': aspect_orbs_dict,
         }
 
         data_json = {
