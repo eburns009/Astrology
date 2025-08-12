@@ -549,74 +549,111 @@ LAYOUT = """
   </div>
 
     <script>
-      // Enhanced wheel for print-like output with glyphs, ticks, labels
-      const table = {{ data_json | tojson }};
+  // Chart rendering with header + clearer planet styling
+  const table = {{ data_json | tojson }};
+  const header = {{ {'person': data['person'], 'place': data['place'], 'dt': data['dt_disp'], 'tz': data['tz'], 'offset': data['utc_offset']} | tojson }};
 
-      const canvas = document.getElementById('wheel');
-      const ctx = canvas.getContext('2d');
-      const W = canvas.width, H = canvas.height; const cx=W/2, cy=H/2;
-      const R = Math.min(W,H)*0.45;
+  const canvas = document.getElementById('wheel');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height; const cx=W/2, cy=H/2;
+  const R = Math.min(W,H)*0.45;
 
-      const signGlyph = ['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓'];
-      const planetGlyph = { Sun:'☉', Moon:'☾', Mercury:'☿', Venus:'♀', Mars:'♂', Jupiter:'♃', Saturn:'♄', Uranus:'♅', Neptune:'♆', Pluto:'♇' };
+  const signGlyph = ['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓'];
+  const planetGlyph = { Sun:'☉', Moon:'☾', Mercury:'☿', Venus:'♀', Mars:'♂', Jupiter:'♃', Saturn:'♄', Uranus:'♅', Neptune:'♆', Pluto:'♇' };
+  const planetColor = { Sun:'#FFD166', Moon:'#B0BEC5', Mercury:'#64B5F6', Venus:'#F48FB1', Mars:'#EF5350', Jupiter:'#FFB74D', Saturn:'#D7CCC8', Uranus:'#4DD0E1', Neptune:'#64B5F6', Pluto:'#BA68C8' };
 
-      function deg2rad(d){ return d*Math.PI/180; }
-      function drawCircle(r, w=2, stroke='#2a3a52'){ ctx.beginPath(); ctx.lineWidth=w; ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle=stroke; ctx.stroke(); }
-      function drawTick(angleDeg, r1, r2, lw=1, stroke='#1f2a38'){
-        const a = deg2rad(angleDeg), ca=Math.cos(a), sa=Math.sin(a);
-        ctx.beginPath(); ctx.moveTo(cx+ca*r1, cy+sa*r1); ctx.lineTo(cx+ca*r2, cy+sa*r2);
-        ctx.lineWidth = lw; ctx.strokeStyle = stroke; ctx.stroke();
-      }
-      function drawTextOnRing(txt, angleDeg, radius, font='18px ui-sans-serif', fill='#eaf2ff'){
-        const a = deg2rad(angleDeg);
-        const x = cx + Math.cos(a)*radius, y = cy + Math.sin(a)*radius;
-        ctx.save(); ctx.translate(x,y); ctx.rotate(a + Math.PI/2);
-        ctx.fillStyle = fill; ctx.font = font; ctx.textAlign='center'; ctx.textBaseline='middle';
-        ctx.fillText(txt, 0, 0); ctx.restore();
-      }
-      function pad2(n){ return (n<10?'0':'')+n; }
-      function degMin(d){ let a=((d%360)+360)%360; const D=Math.floor(a%30); const M=Math.floor((a-Math.floor(a))*60); return `${pad2(D)}°${pad2(M)}′`; }
+  function deg2rad(d){ return d*Math.PI/180; }
+  function drawCircle(r, w=2, stroke='#2a3a52'){ ctx.beginPath(); ctx.lineWidth=w; ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle=stroke; ctx.stroke(); }
+  function drawTick(angleDeg, r1, r2, lw=1, stroke='#1f2a38'){
+    const a = deg2rad(angleDeg), ca=Math.cos(a), sa=Math.sin(a);
+    ctx.beginPath(); ctx.moveTo(cx+ca*r1, cy+sa*r1); ctx.lineTo(cx+ca*r2, cy+sa*r2);
+    ctx.lineWidth = lw; ctx.strokeStyle = stroke; ctx.stroke();
+  }
+  function drawTextOnRing(txt, angleDeg, radius, font='18px ui-sans-serif', fill='#eaf2ff'){
+    const a = deg2rad(angleDeg);
+    const x = cx + Math.cos(a)*radius, y = cy + Math.sin(a)*radius;
+    ctx.save(); ctx.translate(x,y); ctx.rotate(a + Math.PI/2);
+    ctx.fillStyle = fill; ctx.font = font; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.shadowColor='rgba(0,0,0,.45)'; ctx.shadowBlur=3; ctx.fillText(txt, 0, 0); ctx.restore();
+  }
+  function pad2(n){ return (n<10?'0':'')+n; }
+  function degMin(d){ let a=((d%360)+360)%360; const D=Math.floor(a%30); const M=Math.floor((a-Math.floor(a))*60); return `${pad2(D)}°${pad2(M)}′`; }
+  function roundRect(x, y, w, h, r){
+    const rr = Math.min(r, Math.min(w,h)/2);
+    ctx.beginPath(); ctx.moveTo(x+rr, y); ctx.arcTo(x+w, y, x+w, y+h, rr); ctx.arcTo(x+w, y+h, x, y+h, rr); ctx.arcTo(x, y+h, x, y, rr); ctx.arcTo(x, y, x+w, y, rr); ctx.closePath();
+  }
 
-      ctx.clearRect(0,0,W,H);
-      drawCircle(R,3); drawCircle(R*0.92,1); drawCircle(R*0.78,1); drawCircle(R*0.64,1);
+  // Clear, base rings
+  ctx.clearRect(0,0,W,H);
+  drawCircle(R,3); drawCircle(R*0.92,1); drawCircle(R*0.78,1); drawCircle(R*0.64,1);
 
-      const rotation = table.rotationDeg; // ASC at left
+  const rotation = table.rotationDeg; // ASC at left
 
-      // 30° majors + 5° minors
-      for(let d=0; d<360; d+=5){
-        const major = (d%30===0);
-        drawTick(-(d)+rotation, R, R*(major?0.94:0.97), major?2:1, major?'#32445f':'#1f2a38');
-      }
+  // Header inside the canvas
+  (function drawHeader(){
+    const parts = [];
+    if (header.person && header.person.trim() !== '') parts.push(header.person.trim());
+    if (header.place && header.place.trim() !== '') parts.push(header.place.trim());
+    parts.push(`${header.dt} (${header.tz}, UTC${header.offset})`);
+    const title = parts.join('  •  ');
+    ctx.save();
+    ctx.fillStyle='#eaf2ff'; ctx.font='20px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+    ctx.shadowColor='rgba(0,0,0,.6)'; ctx.shadowBlur=4; ctx.lineWidth=3;
+    ctx.fillText(title, cx, cy - R - 24);
+    ctx.restore();
+  })();
 
-      // Sign glyphs
-      for (let i=0;i<12;i++){
-        const mid=i*30+15; drawTextOnRing(signGlyph[i], -(mid)+rotation, R*1.02, '28px ui-sans-serif');
-      }
+  // 30° majors + 5° minors
+  for(let d=0; d<360; d+=5){
+    const major = (d%30===0);
+    drawTick(-(d)+rotation, R, R*(major?0.94:0.97), major?2:1, major?'#32445f':'#1f2a38');
+  }
 
-      // Houses: rays + numbers
-      table.cusps.forEach((cusp,i)=>{
-        drawTick(-(cusp)+rotation, 0, R, 1.5, '#203045');
-        drawTextOnRing(String(i+1), -(cusp+15)+rotation, R*0.88, '18px ui-sans-serif', '#b8c6dd');
-      });
+  // Sign glyphs
+  for (let i=0;i<12;i++){
+    const mid=i*30+15; drawTextOnRing(signGlyph[i], -(mid)+rotation, R*1.02, '30px ui-sans-serif');
+  }
 
-      // Planets with labels
-      const positions = {};
-      table.rows.forEach(row=>{
-        const lon=row.lon; const signIndex=Math.floor(((lon%360)+360)%360/30);
-        const label=(planetGlyph[row.name]||row.name)+" "+signGlyph[signIndex]+" "+degMin(lon);
-        const a = deg2rad(-(lon)+rotation);
-        const pr = R*0.80; const x=cx+Math.cos(a)*pr, y=cy+Math.sin(a)*pr;
-        ctx.beginPath(); ctx.arc(x,y,10,0,Math.PI*2); ctx.fillStyle='#7cc0ff'; ctx.fill();
-        const lr=pr+28; const lx=cx+Math.cos(a)*lr, ly=cy+Math.sin(a)*lr;
-        ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(lx,ly); ctx.strokeStyle='#4b97d1'; ctx.lineWidth=1; ctx.stroke();
-        ctx.save(); ctx.translate(lx,ly); ctx.rotate(a); ctx.fillStyle='#eaf2ff'; ctx.font='16px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(label,0,0); ctx.restore();
-        positions[row.name]={x,y};
-      });
+  // Houses: rays + numbers
+  table.cusps.forEach((cusp,i)=>{
+    drawTick(-(cusp)+rotation, 0, R, 1.75, '#203045');
+    drawTextOnRing(String(i+1), -(cusp+15)+rotation, R*0.88, '18px ui-sans-serif', '#cfe0ff');
+  });
 
-      // Aspects
-      const aspectStyle={Conjunction:'#eaf2ff',Opposition:'#ef9a9a',Trine:'#9ae59a',Square:'#f7d7a6',Sextile:'#9ac7ef',Quincunx:'#c9a4ef'};
-      table.aspects.forEach(a=>{ const p1=positions[a.p1], p2=positions[a.p2]; if(!p1||!p2) return; ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.strokeStyle=aspectStyle[a.type]||'#94a3b8'; ctx.lineWidth=1.5; ctx.stroke(); });
-    </script>
+  // Planets with improved visibility (halo + outline + label background)
+  const positions = {};
+  table.rows.forEach(row=>{
+    const lon=row.lon; const signIndex=Math.floor(((lon%360)+360)%360/30);
+    const label=(planetGlyph[row.name]||row.name)+" "+signGlyph[signIndex]+" "+degMin(lon);
+    const a = deg2rad(-(lon)+rotation);
+    const pr = R*0.80; const x=cx+Math.cos(a)*pr, y=cy+Math.sin(a)*pr;
+
+    // Halo + filled circle
+    const col = planetColor[row.name] || '#7cc0ff';
+    ctx.save(); ctx.shadowColor=col; ctx.shadowBlur=12; ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.fillStyle=col; ctx.fill(); ctx.restore();
+    // Dark outline
+    ctx.beginPath(); ctx.arc(x,y,12,0,Math.PI*2); ctx.lineWidth=2; ctx.strokeStyle='#0b0f14'; ctx.stroke();
+
+    // Leader line
+    const lr=pr+32; const lx=cx+Math.cos(a)*lr, ly=cy+Math.sin(a)*lr;
+    ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(lx,ly); ctx.strokeStyle='#4b97d1'; ctx.lineWidth=1.5; ctx.stroke();
+
+    // Label with rounded dark background for contrast
+    ctx.save(); ctx.translate(lx,ly); ctx.rotate(a);
+    ctx.font='16px ui-sans-serif'; const metrics = ctx.measureText(label); const pad=6; const w=metrics.width+pad*2; const h=22+pad*2;
+    ctx.fillStyle='rgba(12,19,30,0.88)'; ctx.strokeStyle='#2a3a52'; ctx.lineWidth=1;
+    roundRect(-w/2,-h/2,w,h,10); ctx.fill(); ctx.stroke();
+    ctx.fillStyle='#eaf2ff'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(label, 0, 0);
+    ctx.restore();
+
+    positions[row.name]={x,y};
+  });
+
+  // Aspect lines with higher contrast
+  const aspectStyle={Conjunction:'#eaf2ff',Opposition:'#ff9aa2',Trine:'#9ae59a',Square:'#ffd49a',Sextile:'#9ac7ef',Quincunx:'#c9a4ef'};
+  table.aspects.forEach(a=>{ const p1=positions[a.p1], p2=positions[a.p2]; if(!p1||!p2) return; ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.strokeStyle=aspectStyle[a.type]||'#a4b3c6'; ctx.globalAlpha=0.9; ctx.lineWidth=2; ctx.stroke(); ctx.globalAlpha=1; });
+</script>
     {% endif %}
   </div>
 </body>
