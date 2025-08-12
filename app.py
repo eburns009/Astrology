@@ -8,7 +8,7 @@ Now supports:
 """
 from __future__ import annotations
 from math import atan2, degrees, radians, sin, cos, floor, asin
-from datetime import datetime, timezone as _tz
+from datetime import datetime, timezone as _tz, timedelta
 import pytz
 from flask import Flask, request, render_template_string, jsonify, url_for
 # Skyfield
@@ -83,12 +83,13 @@ def is_leap(year: int) -> bool:
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
 
 def fagan_bradley_ayanamsa(dt: datetime) -> float:
-    """High-accuracy Fagan/Bradley ayanamsa.
-    Tries Swiss Ephemeris (pyswisseph) first; falls back to a precise
-    calculation based on the Fagan-Bradley system.
+    """High-accuracy Fagan/Bradley ayanamsa using the SVP (Synetic Vernal Point).
+    Tries Swiss Ephemeris (pyswisseph) first; falls back to precise
+    calculation based on the Fagan-Bradley SVP system.
     Returns degrees in [0,360).
     
-    Fagan-Bradley system assumes zero ayanamsa in 221 CE.
+    Fagan-Bradley SVP system: The ayanamsa was 24.042044444 degrees on Jan 1, 1950.
+    Rate: 50.29 arcseconds per year (modern astronomical precession rate).
     """
     if dt.tzinfo is None:
         dt_utc = dt.replace(tzinfo=_tz.utc)
@@ -108,26 +109,26 @@ def fagan_bradley_ayanamsa(dt: datetime) -> float:
         ay = float(swe.get_ayanamsa_ut(jd))
         return normalize_deg(ay)
     except Exception:
-        # Fallback calculation for Fagan-Bradley
-        # Fagan-Bradley assumes zero ayanamsa in 221 CE
-        # Modern rate: approximately 50.29 arcseconds per year
+        # Fallback calculation for Fagan-Bradley SVP
+        # Reference: Jan 1, 1950, 0h UT = 24.042044444 degrees
+        # Rate: 50.29 arcseconds per year
         
-        # Calculate years from 221 CE to current date
-        years_from_221 = dt_utc.year - 221
+        # Calculate decimal years from Jan 1, 1950
+        ref_date = datetime(1950, 1, 1, tzinfo=_tz.utc)
+        time_diff = dt_utc - ref_date
+        years_from_1950 = time_diff.total_seconds() / (365.25 * 24 * 3600)
         
-        # Add fractional year
-        year_fraction = (dt_utc.timetuple().tm_yday - 1 + 
-                        (dt_utc.hour + dt_utc.minute/60 + dt_utc.second/3600)/24) / (366 if is_leap(dt_utc.year) else 365)
+        # Fagan-Bradley SVP calculation
+        # Base ayanamsa on Jan 1, 1950: 24.042044444 degrees
+        base_ayanamsa = 24.042044444
         
-        total_years = years_from_221 + year_fraction
+        # Rate: 50.29 arcseconds per year = 50.29/3600 degrees per year
+        annual_rate = 50.29 / 3600.0
         
-        # Fagan-Bradley calculation
-        # Base precession rate: 50.29 arcseconds per year
-        # More precise formula accounting for slight acceleration
-        ay_arcsec = total_years * 50.29 + (total_years * total_years) * 0.000222
-        ay_degrees = ay_arcsec / 3600.0
+        # Calculate ayanamsa
+        ay = base_ayanamsa + (years_from_1950 * annual_rate)
         
-        return normalize_deg(ay_degrees)
+        return normalize_deg(ay)
 
 # -------- Skyfield helpers --------
 def get_loader():
