@@ -37,7 +37,7 @@ PLANETS = [
     ("Mercury", "mercury"),
     ("Venus", "venus"),
     ("Earth", "earth"),
-    ("Mars", "mars"),
+    ("Mars", "mars barycenter"),
     ("Jupiter", "jupiter barycenter"),
     ("Saturn", "saturn barycenter"),
     ("Uranus", "uranus barycenter"),
@@ -352,6 +352,13 @@ LAYOUT = """
     .card, .wrap { box-shadow: none; }
     form, .actions, details { display: none; }
     .grid { grid-template-columns: 1fr; }
+    .report-chart { break-after: page; page-break-after: always; }
+    .report-text { break-before: page; page-break-before: always; }
+    canvas { width: 9in; height: 9in; }
+  }
+    .card, .wrap { box-shadow: none; }
+    form, .actions, details { display: none; }
+    .grid { grid-template-columns: 1fr; }
     canvas { width: 9in; height: 9in; }
   }
   @page { size: letter; margin: 0.5in; }
@@ -463,6 +470,7 @@ LAYOUT = """
       <div class="dot"></div>
       <div>{{ data['dt_disp'] }} ({{ data['tz'] }}, UTC{{ data['utc_offset'] }})</div>
     </div>
+    <div class="report-chart">
     <div class="grid" style="margin-top:16px;">
       <div class="card">
         <canvas id="wheel" width="860" height="860"></canvas>
@@ -518,8 +526,18 @@ LAYOUT = """
           </tbody>
         </table>
 
-        <div class="section-title">Text listing</div>
-        <pre class="muted">Planets:
+        
+
+        <div class="actions">
+          <button onclick="window.print()">Print / Save PDF</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card report-text">
+    <h3>Text listing</h3>
+    <pre class="muted">Planets:
 {% for row in data['table'] %} - {{ row.name }}: {{ row.lon_fmt }}
 {% endfor %}Aspects:
 {% if data['aspects']|length == 0 %} - (none within chosen orbs)
@@ -527,13 +545,8 @@ LAYOUT = """
 {% for a in data['aspects'] %} - {{ a.type }}: {{ a.p1 }} – {{ a.p2 }} (Δ {{ a.delta }}°)
 {% endfor %}
 {% endif %}
-        </pre>
-
-        <div class="actions">
-          <button onclick="window.print()">Print / Save PDF</button>
-        </div>
-      </div>
-    </div>
+    </pre>
+  </div>
 
     <script>
       // Enhanced wheel for print-like output with glyphs, ticks, labels
