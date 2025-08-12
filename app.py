@@ -6,27 +6,21 @@ Now supports:
 - Auto timezone detection from birthplace (or manual choose)
 - Text listing for planets and aspects (in addition to tables)
 """
-
 from __future__ import annotations
 from math import atan2, degrees, radians, sin, cos, floor, asin
 from datetime import datetime, timezone as _tz
 import pytz
-
-from flask import Flask, request, render_template_string, jsonify
-
+from flask import Flask, request, render_template_string, jsonify, url_for
 # Skyfield
 from skyfield.api import load, wgs84, Loader
 from skyfield.framelib import ecliptic_frame as ECLIPTIC_FRAME
-
 # Geocoding + timezone lookup
 from geopy.geocoders import Nominatim
 from timezonefinder import TimezoneFinder
-
 # Initialize helpers
 app = Flask(__name__)
-_geocoder = Nominatim(user_agent="nae-switchboard")
+geocoder = Nominatim(user_agent="nae-switchboard (contact: support@newastrology.app)", timeout=5)
 _tzf = TimezoneFinder()
-
 _loader = None
 _ts = None
 _eph = None
@@ -86,7 +80,7 @@ def format_longitude(angle: float) -> str:
     di, mi, si = dms(in_sign)
     return f"{ZODIAC_SIGNS[sign_index]} {di:02d}°{mi:02d}'{si:04.1f}″"
 
-def _is_leap(year: int) -> bool:
+def is_leap(year: int) -> bool:
     return year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
 
 def fagan_bradley_ayanamsa(dt: datetime) -> float:
@@ -115,7 +109,7 @@ def fagan_bradley_ayanamsa(dt: datetime) -> float:
         y = dt_utc.year + (
             dt_utc.timetuple().tm_yday - 1 +
             (dt_utc.hour + dt_utc.minute/60 + dt_utc.second/3600)/24
-        ) / (366 if _is_leap(dt_utc.year) else 365)
+        ) / (366 if is_leap(dt_utc.year) else 365)
         t = y - 2000.0
         base = 24.042044444
         rate = -0.013004167
@@ -133,18 +127,15 @@ def get_loader() -> Loader:
 def get_timescale():
     global _ts
     if _ts is None:
-        _ts = get_loader().timescale()
-    return _ts
+        ts = get_loader().timescale()
+    return ts
 
 def get_ephemeris():
     global _eph
     if _eph is None:
-        try:
-            # Prefer DE441 for planet centers (better ASC/MC/planet centers), fallback to small DE440s
-            _eph = get_loader()("de441.bsp")
-        except Exception:
-            _eph = get_loader()("de440s.bsp")
-    return _eph
+        # Use the small kernel by default to avoid large downloads on first request
+        eph = get_loader()("de440s.bsp")
+    return eph
 
 # -------- core calculations --------
 def planetary_longitudes(dt: datetime, lat: float, lon: float, elevation_m: float,
@@ -152,11 +143,13 @@ def planetary_longitudes(dt: datetime, lat: float, lon: float, elevation_m: floa
     ts = get_timescale()
     t = ts.from_datetime(dt)
     eph = get_ephemeris()
+    
     if helio:
         origin = eph["sun"]
     else:
         topos = wgs84.latlon(latitude_degrees=lat, longitude_degrees=lon, elevation_m=elevation_m)
         origin = eph["earth"] + topos
+    
     results = {}
     for name, key in PLANETS:
         if key == "earth":
@@ -167,6 +160,7 @@ def planetary_longitudes(dt: datetime, lat: float, lon: float, elevation_m: floa
         lat_ecl, lon_ecl, distance = apparent.frame_latlon(ECLIPTIC_FRAME)
         lam = normalize_deg(lon_ecl.degrees)
         results[name] = lam
+    
     return results
 
 def to_sidereal(longitudes_tropical: dict, dt: datetime) -> dict:
@@ -176,11 +170,12 @@ def to_sidereal(longitudes_tropical: dict, dt: datetime) -> dict:
 # -------- ASC/MC/Houses --------
 OBLIQ_DEG_MEAN_J2000 = 23.43929111
 
-def _julian_day_utc(dt: datetime) -> float:
+def julian_day_utc(dt: datetime) -> float:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=_tz.utc)
     else:
         dt = dt.astimezone(_tz.utc)
+    
     y, m = dt.year, dt.month
     D = dt.day + (dt.hour + dt.minute/60 + dt.second/3600)/24.0
     if m <= 2:
@@ -192,7 +187,7 @@ def _julian_day_utc(dt: datetime) -> float:
     return JD
 
 def mean_obliquity_laskar(dt: datetime) -> float:
-    T = (_julian_day_utc(dt) - 2451545.0) / 36525.0
+    T = (julian_day_utc(dt) - 2451545.0) / 36525.0
     seconds = (84381.406
                - 46.836769*T
                - 0.0001831*(T**2)
@@ -204,7 +199,7 @@ def mean_obliquity_laskar(dt: datetime) -> float:
 def obliquity_deg(dt: datetime) -> float:
     try:
         import swisseph as swe  # type: ignore
-        jd = _julian_day_utc(dt)
+        jd = julian_day_utc(dt)
         eps, _, _ = swe.obl_ecl(jd, 1)
         return float(eps)
     except Exception:
@@ -222,7 +217,7 @@ def lst_deg(dt: datetime, lon_deg: float) -> float:
 def asc_mc(dt: datetime, lat_deg: float, lon_deg: float) -> tuple[float, float]:
     try:
         import swisseph as swe  # type: ignore
-        jd = _julian_day_utc(dt)
+        jd = julian_day_utc(dt)
         flags = 0
         cusps, ascmc = swe.houses_ex(jd, flags, float(lat_deg), float(lon_deg), b'E')
         asc = float(ascmc[0])
@@ -230,11 +225,14 @@ def asc_mc(dt: datetime, lat_deg: float, lon_deg: float) -> tuple[float, float]:
         return normalize_deg(asc), normalize_deg(mc)
     except Exception:
         pass
+    
     ε = radians(obliquity_deg(dt))
     φ = radians(lat_deg)
     θ = radians(lst_deg(dt, lon_deg))
+    
     lam_mc = degrees(atan2(sin(θ), cos(θ)*cos(ε)))
     lam_mc = normalize_deg(lam_mc)
+    
     def eq_to_altaz(alpha, delta):
         H = (θ - alpha)
         while H > 3.141592653589793: H -= 2*3.141592653589793
@@ -246,12 +244,14 @@ def asc_mc(dt: datetime, lat_deg: float, lon_deg: float) -> tuple[float, float]:
         A = atan2(sinA, cosA)
         if A < 0: A += 2*3.141592653589793
         return h, A
+    
     def ecl_to_eq(lam):
         lamr = radians(lam)
         alpha = atan2(sin(lamr)*cos(ε), cos(lamr))
         if alpha < 0: alpha += 2*3.141592653589793
         delta = asin(sin(lamr)*sin(ε))
         return alpha, delta
+    
     prev_h = None
     prev_lam = None
     roots = []
@@ -265,8 +265,10 @@ def asc_mc(dt: datetime, lat_deg: float, lon_deg: float) -> tuple[float, float]:
             roots.append((lam0, A0))
         prev_h = h
         prev_lam = lam
+    
     asc_candidates = [normalize_deg(l) for (l, A0) in roots if 0 < degrees(A0) < 180]
     lam_asc = asc_candidates[0] if asc_candidates else 0.0
+    
     return lam_asc, lam_mc
 
 def equal_house_cusps(asc_deg: float, mode: str = "asc_middle") -> list[float]:
@@ -335,7 +337,6 @@ LAYOUT = """
     .minihead b{ font-size:16px; }
     .dot::before{ content:"•"; margin:0 8px; color:#9ca3af; }
     .tooltip{ position:fixed; z-index:1000; background:#ffffff; color:#111827; border:1px solid #e5e7eb; border-radius:8px; padding:6px 8px; font-size:13px; pointer-events:none; box-shadow:0 8px 24px rgba(0,0,0,.15); }
-
     @media print {
       body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .card, .wrap { box-shadow: none; }
@@ -355,7 +356,6 @@ LAYOUT = """
   <div class="wrap">
     <h1>New Astrology Emerging — Switchboard (Local)</h1>
     <p class="lead">Birth charts with equal houses (Asc middle/cusp), custom aspect orbs, and a clean printable report.</p>
-
     <div class="card">
       <form method="GET" action="{{ url_for('chart') }}">
         <div class="row2">
@@ -451,19 +451,18 @@ LAYOUT = """
             btn.addEventListener('click', function(){
               const f = btn.closest('form');
               if (!f) return;
-              const tzSel = f.querySelector('select[name=\"tz\"]'); if (tzSel) tzSel.value = 'auto';
-              const place = f.querySelector('input[name=\"place\"]'); if (place) place.value = '';
-              const lat = f.querySelector('input[name=\"lat\"]'); if (lat) lat.value = '';
-              const lon = f.querySelector('input[name=\"lon\"]'); if (lon) lon.value = '';
-              const elev = f.querySelector('input[name=\"elev\"]'); if (elev) elev.value = '';
-              const person = f.querySelector('input[name=\"person\"]'); if (person) person.value = '';
+              const tzSel = f.querySelector('select[name="tz"]'); if (tzSel) tzSel.value = 'auto';
+              const place = f.querySelector('input[name="place"]'); if (place) place.value = '';
+              const lat = f.querySelector('input[name="lat"]'); if (lat) lat.value = '';
+              const lon = f.querySelector('input[name="lon"]'); if (lon) lon.value = '';
+              const elev = f.querySelector('input[name="elev"]'); if (elev) elev.value = '';
+              const person = f.querySelector('input[name="person"]'); if (person) person.value = '';
               window.scrollTo({ top: 0, behavior: 'smooth' });
             });
           }
           // Print button
           const pbtn = document.getElementById('printBtn');
           if (pbtn) pbtn.addEventListener('click', ()=> window.print());
-
           // Aspect quick toggles
           const f = document.querySelector('form');
           function setAll(on){ f.querySelectorAll('input[type="checkbox"][data-aspect]').forEach(cb=>{ cb.checked = !!on; }); }
@@ -477,7 +476,6 @@ LAYOUT = """
         })();
       </script>
     </div>
-
     {% if data %}
     <div class="card minihead" style="margin-top:16px;">
       <div><b>{{ data['person'] or '—' }}</b></div>
@@ -492,7 +490,6 @@ LAYOUT = """
       <div class="dot"></div>
       <div>Lat {{ data['lat'] }}°, Lon {{ data['lon'] }}°</div>
     </div>
-
     <div class="card" style="margin-top:12px;">
       <div class="grid">
         <div>
@@ -509,7 +506,6 @@ LAYOUT = """
               {% endfor %}
             </tbody>
           </table>
-
           <div class="section-title">Houses (Equal)</div>
           <table>
             <thead><tr><th>#</th><th>Cusp</th></tr></thead>
@@ -519,7 +515,6 @@ LAYOUT = """
               {% endfor %}
             </tbody>
           </table>
-
           <div class="section-title">Aspects</div>
           <table>
             <thead><tr><th>Aspect</th><th>Between</th><th>Exact</th><th>Orb (°)</th><th>Δ</th></tr></thead>
@@ -538,7 +533,6 @@ LAYOUT = """
               {% endif %}
             </tbody>
           </table>
-
           <div class="section-title">Orbs Used</div>
           <table>
             <thead><tr><th>Aspect</th><th>Orb (°)</th></tr></thead>
@@ -551,7 +545,6 @@ LAYOUT = """
         </div>
       </div>
     </div>
-
     <div class="card report-text" style="margin-top:12px;">
       <h3>Text listing</h3>
       <pre class="muted">Planets:
@@ -564,21 +557,17 @@ LAYOUT = """
 {% endif %}
       </pre>
     </div>
-
     <script>
       const table = {{ data_json | tojson }};
       const header = {{ {'person': data['person'], 'place': data['place'], 'dt': data['dt_disp'], 'tz': data['tz'], 'offset': data['utc_offset'], 'lat': data['lat'], 'lon': data['lon'], 'lst': data['lst'], 'dst': data['dst']} | tojson }};
-
       const canvas = document.getElementById('wheel');
       const ctx = canvas.getContext('2d');
       const W = canvas.width, H = canvas.height; const cx=W/2, cy=H/2;
       const R = Math.min(W,H)*0.45;
-
       const signGlyph = ['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓'];
       const signNames = ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'];
       const planetGlyph = { Sun:'☉', Moon:'☾', Mercury:'☿', Venus:'♀', Mars:'♂', Jupiter:'♃', Saturn:'♄', Uranus:'♅', Neptune:'♆', Pluto:'♇' };
       const planetColor = { Sun:'#f59e0b', Moon:'#9ca3af', Mercury:'#3b82f6', Venus:'#ec4899', Mars:'#ef4444', Jupiter:'#f59e0b', Saturn:'#6b7280', Uranus:'#06b6d4', Neptune:'#3b82f6', Pluto:'#8b5cf6' };
-
       function deg2rad(d){ return d*Math.PI/180; }
       function drawCircle(r, w=2, stroke='#cbd5e1'){ ctx.beginPath(); ctx.lineWidth=w; ctx.arc(cx,cy,r,0,Math.PI*2); ctx.strokeStyle=stroke; ctx.stroke(); }
       function drawTick(angleDeg, r1, r2, lw=1, stroke='#e5e7eb'){
@@ -596,11 +585,9 @@ LAYOUT = """
       function pad2(n){ return (n<10?'0':'')+n; }
       function degMin(d){ let a=((d%360)+360)%360; const D=Math.floor(a%30); const M=Math.floor((a-Math.floor(a))*60); return `${pad2(D)}°${pad2(M)}′`; }
       function norm360(a){ return ((a%360)+360)%360; }
-
       // clear + rings
       ctx.clearRect(0,0,W,H);
       drawCircle(R,3); drawCircle(R*0.92,1); drawCircle(R*0.78,1); drawCircle(R*0.64,1);
-
       // header text in canvas
       (function(){
         const parts = [];
@@ -613,12 +600,10 @@ LAYOUT = """
         const t = parts.join('  •  ');
         ctx.save(); ctx.fillStyle='#111827'; ctx.font='20px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='alphabetic'; ctx.fillText(t, cx, cy - R - 24); ctx.restore();
       })();
-
       const rotation = table.rotationDeg;
       for(let d=0; d<360; d+=5){ const major=(d%30===0); drawTick(-(d)+rotation, R, R*(major?0.94:0.97), major?2:1, major?'#9ca3af':'#e5e7eb'); }
       for (let i=0;i<12;i++){ const mid=i*30+15; drawTextOnRing(signGlyph[i], -(mid)+rotation, R*1.02, '28px ui-sans-serif'); }
       table.cusps.forEach((cusp,i)=>{ drawTick(-(cusp)+rotation, 0, R, 1.75, '#94a3b8'); drawTextOnRing(String(i+1), -(cusp+15)+rotation, R*0.88, '18px ui-sans-serif', '#475569'); });
-
       // precompute planet positions
       const positions = {}; table.rows.forEach(row=>{ const a=deg2rad(-(row.lon)+rotation); const pr=R*0.80; positions[row.name]={ x:cx+Math.cos(a)*pr, y:cy+Math.sin(a)*pr, lon:row.lon }; });
       // aspects under planets
@@ -640,7 +625,6 @@ LAYOUT = """
       table.aspects.forEach(a=>{ const p1=positions[a.p1], p2=positions[a.p2]; if(!p1||!p2) return; ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.lineTo(p2.x,p2.y); ctx.strokeStyle=aspectStyle[a.type]||'#94a3b8'; ctx.lineWidth=2; ctx.globalAlpha=0.9; ctx.stroke(); ctx.globalAlpha=1; });
       // planets as glyph-only
       table.rows.forEach(row=>{ const p=positions[row.name]; const col=planetColor[row.name]||'#3b82f6'; ctx.save(); ctx.shadowColor=col; ctx.shadowBlur=10; ctx.beginPath(); ctx.arc(p.x,p.y,18,0,Math.PI*2); ctx.fillStyle=col; ctx.fill(); ctx.restore(); ctx.beginPath(); ctx.arc(p.x,p.y,18,0,Math.PI*2); ctx.lineWidth=2; ctx.strokeStyle='#0f172a15'; ctx.stroke(); const g=planetGlyph[row.name]||row.name[0]; ctx.font='26px ui-sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.strokeStyle='#0b0f14'; ctx.lineWidth=3; ctx.strokeText(g,p.x,p.y); ctx.fillStyle='#ffffff'; ctx.fillText(g,p.x,p.y); });
-
       // tooltips
       const tipEl=document.getElementById('chartTip');
       function showTip(html,x,y){ tipEl.innerHTML=html; tipEl.style.display='block'; tipEl.style.left=(x+14)+'px'; tipEl.style.top=(y+14)+'px'; }
@@ -655,7 +639,6 @@ LAYOUT = """
       });
     </script>
     {% endif %}
-
   </div>
 </body>
 </html>
@@ -663,10 +646,10 @@ LAYOUT = """
 
 ABOUT = """
 <!doctype html>
-<html><head><meta charset=\"utf-8\"><title>About</title>
+<html><head><meta charset="utf-8"><title>About</title>
 <style>body{background:#fff;color:#111827;font-family:ui-sans-serif} .wrap{max-width:800px;margin:40px auto;padding:0 16px} a{color:#2563eb}</style>
 </head>
-<body><div class=\"wrap\">
+<body><div class="wrap">
 <h1>About & current limits</h1>
 <ul>
   <li><b>Accuracy:</b> Skyfield (apparent positions) + JPL DE441 when available (fallback DE440s). Swiss Ephemeris used for ayanamsha and ASC/MC when installed.</li>
@@ -674,7 +657,7 @@ ABOUT = """
   <li><b>Houses:</b> Equal (Asc middle / cusp).</li>
   <li><b>Aspects:</b> 13 configurable (custom orbs & colors).</li>
 </ul>
-<p><a href=\"/\">Back</a></p>
+<p><a href="/">Back</a></p>
 </div></body></html>
 """
 
@@ -682,6 +665,14 @@ ABOUT = """
 def about():
     return ABOUT
 
+# Warm important resources once per process (timescale + ephemeris)
+@app.before_first_request
+def warm_start():
+    try:
+        get_timescale()
+        get_ephemeris()
+    except Exception:
+        pass
 
 @app.route("/")
 def index():
@@ -689,13 +680,13 @@ def index():
     default_tz = "auto"
     now_local = datetime.now(pytz.timezone("America/Denver")).replace(second=0, microsecond=0)
     default_dt = now_local.strftime("%Y-%m-%dT%H:%M")
-
+    
     aspects = [
         {"key": spec["key"], "name": spec["name"], "orb": spec["default_orb"],
          "default_orb": spec["default_orb"], "color": spec["color"], "on": True}
         for spec in ASPECTS_DEF
     ]
-
+    
     return render_template_string(
         LAYOUT,
         default_dt=default_dt,
@@ -703,7 +694,6 @@ def index():
         data=None,
         aspects=aspects,
     )
-
 
 @app.route("/chart")
 def chart():
@@ -718,7 +708,7 @@ def chart():
         frame = request.args.get("frame", "geo")
         zodiac = request.args.get("zodiac", "sidereal")
         house_mode = request.args.get("house_mode", "asc_middle")
-
+        
         # Aspect options (default ON only on first submit)
         has_aspect_params = any(key.endswith('_on') or key.endswith('_orb') for key in request.args.keys())
         aspect_opts = {}
@@ -730,28 +720,32 @@ def chart():
                 aspect_opts[f"{k}_orb"] = float(request.args.get(f"{k}_orb", spec["default_orb"]))
             except Exception:
                 aspect_opts[f"{k}_orb"] = spec["default_orb"]
-
+        
         # Coordinates
         lat = float(lat_str) if (lat_str and lat_str.strip()) else None
         lon = float(lon_str) if (lon_str and lon_str.strip()) else None
         elev = float(elev_str) if (elev_str and elev_str.strip()) else 0.0
-
+        
         if (lat is None or lon is None) and place:
-            loc = _geocoder.geocode(place, addressdetails=False, language="en")
+            loc = None
+            try:
+                loc = geocoder.geocode(place, addressdetails=False, language="en", timeout=5)
+            except Exception:
+                loc = None
             if loc:
                 lat = float(loc.latitude)
                 lon = float(loc.longitude)
-
+        
         if lat is None or lon is None:
             return jsonify({"error": "Please enter a valid birthplace or coordinates."}), 400
-
+        
         # Timezone
         if tz_sel == "auto":
             tz_name = _tzf.timezone_at(lng=lon, lat=lat) or "UTC"
         else:
             tz_name = tz_sel
         tz = pytz.timezone(tz_name)
-
+        
         # Parse local birth time and make timezone-aware (DST-safe)
         local_dt = datetime.strptime(dt_str, "%Y-%m-%dT%H:%M")
         try:
@@ -760,7 +754,7 @@ def chart():
             dt = tz.localize(local_dt, is_dst=True)
         except pytz.exceptions.NonExistentTimeError:
             dt = tz.localize(local_dt, is_dst=True)
-
+        
         # Display strings
         dt_disp = dt.strftime("%Y-%m-%d %H:%M")
         offset_td = dt.utcoffset() or (dt - dt)
@@ -769,41 +763,46 @@ def chart():
         hh = abs(total_min) // 60
         mm = abs(total_min) % 60
         utc_offset = f"{sign}{hh:02d}:{mm:02d}"
+        
         try:
             dst_flag = "Yes" if (dt.dst() and dt.dst().total_seconds() != 0) else "No"
         except Exception:
             dst_flag = "—"
-
+        
         # Compute positions (tropical first)
         helio = (frame == "helio")
         longs_trop = planetary_longitudes(dt, lat, lon, elev, helio=helio)
-
+        
         # Sidereal conversion when requested
         ay = fagan_bradley_ayanamsa(dt) if zodiac == "sidereal" else 0.0
         longs = {n: normalize_deg(L - (ay if zodiac=="sidereal" else 0.0)) for n, L in longs_trop.items()}
-
+        
         # ASC/MC
         asc_trop, mc_trop = asc_mc(dt, lat, lon)
         asc = normalize_deg(asc_trop - (ay if zodiac=="sidereal" else 0.0))
         mc = normalize_deg(mc_trop - (ay if zodiac=="sidereal" else 0.0))
-
+        
         # Houses (Equal)
         cusps = equal_house_cusps(asc, mode=house_mode)
-
+        
         # Aspects
         aspects_found = find_aspects(longs, aspect_opts)
         aspect_orbs_dict = { spec['name']: aspect_opts.get(spec['key']+"_orb", spec['default_orb']) for spec in ASPECTS_DEF }
-
+        
         # LST for header
         lst_val_deg = lst_deg(dt, lon)
         lst_hours = (lst_val_deg / 15.0) % 24.0
-        lst_h = int(lst_hours); lst_m = int((lst_hours - lst_h) * 60); lst_s = int(round((((lst_hours - lst_h) * 60) - lst_m) * 60))
+        lst_h = int(lst_hours)
+        lst_m = int((lst_hours - lst_h) * 60)
+        lst_s = int(round((((lst_hours - lst_h) * 60) - lst_m) * 60))
         if lst_s == 60:
-            lst_s = 0; lst_m += 1
+            lst_s = 0
+            lst_m += 1
         if lst_m == 60:
-            lst_m = 0; lst_h = (lst_h + 1) % 24
+            lst_m = 0
+            lst_h = (lst_h + 1) % 24
         lst_str = f"{lst_h:02d}:{lst_m:02d}:{lst_s:02d}"
-
+        
         # Build tables
         table_rows = []
         for name in [n for n,_ in PLANETS if n != 'Earth']:
@@ -811,9 +810,9 @@ def chart():
                 continue
             lam = longs[name]
             table_rows.append({"name": name, "lon": lam, "lon_fmt": format_longitude(lam)})
-
+        
         houses_rows = [{"idx": i+1, "lon": c, "lon_fmt": format_longitude(c)} for i, c in enumerate(cusps)]
-
+        
         data = {
             "person": person,
             "place": place,
@@ -836,23 +835,23 @@ def chart():
             "aspect_orbs": aspect_orbs_dict,
             "house_mode": house_mode,
         }
-
+        
         data_json = {
             "rotationDeg": normalize_deg(180.0 + asc),  # ASC at left
             "cusps": cusps,
             "rows": [{"name": r["name"], "lon": r["lon"]} for r in table_rows],
             "aspects": [{"p1": a['p1'], "p2": a['p2'], "type": a['type'], "delta": a['delta']} for a in aspects_found],
         }
-
+        
         # Echo defaults/aspects for form re-render
         aspects_ui = [
             {"key": spec["key"], "name": spec["name"], "orb": aspect_opts.get(spec["key"]+"_orb", spec["default_orb"]), "default_orb": spec["default_orb"], "color": spec["color"], "on": aspect_opts.get(spec["key"]+"_on", True if not has_aspect_params else False)}
             for spec in ASPECTS_DEF
         ]
-
+        
         # Keep the user-entered birth time in the form
         default_dt = local_dt.strftime("%Y-%m-%dT%H:%M")
-
+        
         return render_template_string(
             LAYOUT,
             default_dt=default_dt,
@@ -861,11 +860,9 @@ def chart():
             data_json=data_json,
             aspects=aspects_ui,
         )
-
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 400
 
-
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
-
