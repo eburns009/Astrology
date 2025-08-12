@@ -1,8 +1,9 @@
-flask==2.3.2
-gunicorn==21.2.0
-skyfield==1.46
-pytz==2023.3
-geopy==2.3.0
-timezonefinder==6.2.0
-requests==2.31.0
-# pyswisseph==2.10.3.2  # Comment out if causing build issues
+flask>=2.3.0,<3.0.0
+gunicorn>=21.0.0,<22.0.0
+skyfield>=1.46
+pyswisseph>=2.10.0
+pytz>=2023.3
+timezonefinder>=6.2.0
+geopy>=2.3.0
+requests>=2.31.0
+python-dateutil>=2.8.0
