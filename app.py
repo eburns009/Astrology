@@ -770,30 +770,29 @@ ABOUT = """
 <p><a href="/">Back</a></p>
 </div></body></html>
 """
-
 @app.route("/")
 def index():
     # Default dropdown selection uses 'auto' (detect from birthplace)
-    default_tz = 'auto'
-    # Prefill the datetime-local field with a valid string (any zone works just to seed the control)
-    now_local = datetime.now(pytz.timezone('America/Denver')).replace(second=0, microsecond=0)
+    default_tz = "auto"
+
+    # Seed the datetime-local control with a valid value
+    now_local = datetime.now(pytz.timezone("America/Denver")).replace(second=0, microsecond=0)
     default_dt = now_local.strftime("%Y-%m-%dT%H:%M")
 
-    # aspect controls default state
-    aspects = []
-    for spec in ASPECTS_DEF:
-        aspects.append({"key": spec['key'], "name": spec['name'], "orb": spec['default_orb'], "on": True})
+    # Aspect controls default state
+    aspects = [
+        {"key": spec["key"], "name": spec["name"], "orb": spec["default_orb"], "on": True}
+        for spec in ASPECTS_DEF
+    ]
 
     return render_template_string(
-            LAYOUT,
-            default_dt=default_dt,
-            default_tz=tz_name,
-            data=data,
-            data_json=data_json,
-            aspects=aspects_ui
-        )
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
+        LAYOUT,
+        default_dt=default_dt,
+        default_tz=default_tz,
+        data=None,          # no results yet on the home page
+        aspects=aspects,
+    )
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
