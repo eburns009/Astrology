@@ -1,91 +1,33 @@
-New Astrology Emerging
-Birth charts with equal houses (Asc middle/cusp), custom aspect orbs, and a clean printable report.
-
-Name (optional)
-{{ data['person'] if data else '' }}
-Birthplace (city, country)
-{{ data['place'] if data else '' }}
-Local birth date & time
+Astrology Chart — Clean
+Person
+{{ defaults.person }}
+Place (label only)
+{{ defaults.place }}
+Local date & time
 
 mm/dd/yyyy, --:-- --
 Timezone
 
-{{ data['tz'] }}
-Advanced (lat/lon, frame, zodiac, houses, aspects)
-Lat
-{{ data['lat'] if data else '' }}
-Lon
-{{ data['lon'] if data else '' }}
-Frame
-
-Geocentric
+America/New_York
+Latitude
+{{ defaults.lat }}
+Longitude
+{{ defaults.lon }}
 Zodiac
 
 Sidereal (Fagan/Bradley)
-Equal Houses
+Heliocentric
 
-Asc in the middle
-House Direction
+No (geocentric)
+Compute
+{% if error %}
+Error: {{ error }}
 
-Counterclockwise
-Prenatal Chart
-Fixed Stars
-Aspects
-Compute Chart
-New Chart
-Print / Save PDF
-About & limits
-{% if data %} {% endif %} {% if data %}
-{{ data['person'] or '—' }}
-{{ data['place'] or '—' }}
-{{ data['dt_disp'] }} ({{ data['tz'] }}, UTC{{ data['utc_offset'] }})
-DST {{ data['dst'] }}
-LST {{ data['lst'] }}
-Lat {{ data['lat'] }}°, Lon {{ data['lon'] }}°
-Positions ({{ data['frame']|upper }} · {{ data['zodiac'] }})
+{% endif %} {% if data %}
+Positions — {{ data['zodiac'] }}
 {% for row in data['table'] %} {% endfor %}
 Body	Longitude	Decimal°
-{{ row.name }}	{{ row.lon_fmt }}	{{ row.sign }} {{ row.decimal_degrees }}°
-Houses (Equal)
-{% for h in data['houses'] %} {% endfor %}
-#	Cusp
-{{ h.idx }}	{{ h.lon_fmt }}
-Aspects
-{% for a in data['aspects'] %} {% endfor %} {% if data['aspects']|length == 0 %} {% endif %}
-Aspect	Between	Exact	Orb (°)	Δ
-{{ a.type }}	{{ a.p1 }} – {{ a.p2 }}	{{ a.angle }}°	{{ data['aspect_orbs'][a.type] }}	{{ a.delta }}°
-No aspects within chosen orbs.
-{% if data['show_fixed_stars'] %}
-Fixed Stars (Fagan-Bradley)
-{% for fs in data['fixed_stars'] %} {% endfor %} {% if data['fixed_stars']|length == 0 %} {% endif %}
-Planet	Fixed Star	Separation	Magnitude
-{{ fs.planet }}	{{ fs.star }}	{{ fs.separation }}°	{{ fs.star_magnitude }}
-No fixed star conjunctions within {{ data['fixed_star_orb'] }}° orb.
-{% endif %} {% if data['show_prenatal'] and data['prenatal'] %}
-Prenatal Chart (Hermetic Rule)
-{% if data['prenatal'].get('error') %}
-Error calculating prenatal chart: {{ data['prenatal']['error'] }}
+{{ row['name'] }}	{{ row['lon_fmt'] }}	{{ row['decimal_degrees'] }}
+Ayanāṁśa: {{ data['ayanamsa'] }}
 
-{% else %}
-{{ data['prenatal']['rule'] }}
-{{ data['prenatal']['datetime'] }} ({{ data['prenatal']['days_before'] }} days before birth)
-Asc: {{ data['prenatal']['asc_fmt'] }} • MC: {{ data['prenatal']['mc_fmt'] }}
-{% for row in data['prenatal']['table'] %} {% endfor %}
-Body	Prenatal Position
-{{ row.name }}	{{ row.lon_fmt }}
-{% endif %} {% endif %}
-Orbs Used
-{% for spec in aspects %} {% endfor %}
-Aspect	Orb (°)
-{{ spec.name }}	{{ spec.orb }}
-Text listing
-Planets:
-{% for row in data['table'] %} - {{ row.name }}: {{ row.lon_fmt }}
-{% endfor %}Aspects:
-{% if data['aspects']|length == 0 %} - (none within chosen orbs)
-{% else %}
-{% for a in data['aspects'] %} - {{ a.type }}: {{ a.p1 }} – {{ a.p2 }} (Δ {{ a.delta }}°)
-{% endfor %}
-{% endif %}
-      
 {% endif %}
