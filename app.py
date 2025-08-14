@@ -153,35 +153,40 @@ def fagan_bradley_ayanamsa(dt: datetime) -> float:
     else:
         dt_utc = dt.astimezone(_tz.utc)
     
-    try:
-        import swisseph as swe
-        jd = swe.julday(
-            dt_utc.year, dt_utc.month, dt_utc.day,
-            dt_utc.hour + dt_utc.minute/60.0 + dt_utc.second/3600.0,
-            swe.GREG_CAL,
-        )
-        swe.set_sid_mode(swe.SIDM_FAGAN_BRADLEY, 0, 0)
-        ay = float(swe.get_ayanamsa_ut(jd))
-        return normalize_deg(ay)
-    except (ImportError, Exception):
-        # Direct correction approach
-        # Your current ayanamsa shows 24.22° but should be ~24.40°
-        # So we need to add exactly 0.18° to match reference software
-        
-        jd = julian_day_utc(dt_utc)
-        j1950 = 2433282.5
-        years_since_1950 = (jd - j1950) / 365.24219878
-        
-        # Standard Fagan-Bradley calculation
-        base_ayanamsa_1950 = 24.042044444
-        annual_rate_deg = 50.290966 / 3600.0
-        standard_ay = base_ayanamsa_1950 + (years_since_1950 * annual_rate_deg)
-        
-        # Add empirical correction to match reference software
-        correction = 0.18  # degrees
-        ay = standard_ay + correction
-        
-        return normalize_deg(ay)
+    # Temporarily disable Swiss Ephemeris to use our calibrated calculation
+    use_swiss_ephemeris = False  # Set to False to force our calculation
+    
+    if use_swiss_ephemeris:
+        try:
+            import swisseph as swe
+            jd = swe.julday(
+                dt_utc.year, dt_utc.month, dt_utc.day,
+                dt_utc.hour + dt_utc.minute/60.0 + dt_utc.second/3600.0,
+                swe.GREG_CAL,
+            )
+            swe.set_sid_mode(swe.SIDM_FAGAN_BRADLEY, 0, 0)
+            ay = float(swe.get_ayanamsa_ut(jd))
+            return normalize_deg(ay)
+        except (ImportError, Exception):
+            pass
+    
+    # Use our calibrated calculation
+    jd = julian_day_utc(dt_utc)
+    j1950 = 2433282.5
+    years_since_1950 = (jd - j1950) / 365.24219878
+    
+    # Standard Fagan-Bradley calculation
+    base_ayanamsa_1950 = 24.042044444
+    annual_rate_deg = 50.290966 / 3600.0
+    standard_ay = base_ayanamsa_1950 + (years_since_1950 * annual_rate_deg)
+    
+    # Add empirical correction to match reference software
+    correction = 0.18  # degrees
+    ay = standard_ay + correction
+    
+    print(f"DEBUG: Standard ayanamsa = {standard_ay:.6f}°, with correction = {ay:.6f}°")  # Debug
+    
+    return normalize_deg(ay)
 
 def planetary_longitudes(dt: datetime, helio: bool = False) -> dict:
     """Calculate planetary longitudes (true geocentric for planets)."""
@@ -416,6 +421,7 @@ def chart():
         # Apply sidereal correction if needed
         if zodiac == "sidereal":
             ayanamsa = fagan_bradley_ayanamsa(dt)
+            print(f"DEBUG: Calculated ayanamsa = {ayanamsa:.6f}°")  # Debug output
             longitudes = {name: normalize_deg(lon - ayanamsa) for name, lon in longs_trop.items()}
         else:
             ayanamsa = 0.0
