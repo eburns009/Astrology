@@ -43,9 +43,9 @@
       <div>
         <label>Zodiac:</label>
         <select name="zodiac">
-          <option value="sidereal" {% if not data or (data and 'Lahiri' in (data.zodiac or '')) %}selected{% endif %}>Sidereal (Lahiri)</option>
+          <option value="tropical" {% if not data or data.zodiac == 'Tropical' %}selected{% endif %}>Tropical</option>
+          <option value="sidereal" {% if data and 'Lahiri' in (data.zodiac or '') %}selected{% endif %}>Sidereal (Lahiri)</option>
           <option value="sidereal_fb" {% if data and 'Fagan-Bradley' in (data.zodiac or '') %}selected{% endif %}>Sidereal (Fagan-Bradley)</option>
-          <option value="tropical" {% if data and data.zodiac == 'Tropical' %}selected{% endif %}>Tropical</option>
         </select>
       </div>
       <div>
