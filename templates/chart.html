@@ -392,8 +392,8 @@
             <div>
               <label>Zodiac</label>
               <select name="zodiac">
-                <option value="sidereal" {% if not data or data.zodiac=='Sidereal' %}selected{% endif %}>Sidereal (Lahiri)</option>
-                <option value="sidereal_fb" {% if data and data.zodiac=='Sidereal FB' %}selected{% endif %}>Sidereal (Fagan-Bradley)</option>
+                <option value="sidereal" {% if not data or data.zodiac=='Sidereal (Lahiri)' %}selected{% endif %}>Sidereal (Lahiri)</option>
+                <option value="sidereal_fb" {% if data and data.zodiac=='Sidereal (Fagan-Bradley)' %}selected{% endif %}>Sidereal (Fagan-Bradley)</option>
                 <option value="tropical" {% if data and data.zodiac=='Tropical' %}selected{% endif %}>Tropical</option>
               </select>
             </div>
