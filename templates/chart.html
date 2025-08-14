@@ -43,8 +43,8 @@
       <div>
         <label>Zodiac:</label>
         <select name="zodiac">
-          <option value="sidereal" {% if not data or (data and data.zodiac == 'Sidereal (Lahiri)') %}selected{% endif %}>Sidereal (Lahiri)</option>
-          <option value="sidereal_fb" {% if data and data.zodiac == 'Sidereal (Fagan-Bradley)' %}selected{% endif %}>Sidereal (Fagan-Bradley)</option>
+          <option value="sidereal" {% if not data or (data and 'Lahiri' in (data.zodiac or '')) %}selected{% endif %}>Sidereal (Lahiri)</option>
+          <option value="sidereal_fb" {% if data and 'Fagan-Bradley' in (data.zodiac or '') %}selected{% endif %}>Sidereal (Fagan-Bradley)</option>
           <option value="tropical" {% if data and data.zodiac == 'Tropical' %}selected{% endif %}>Tropical</option>
         </select>
       </div>
@@ -66,7 +66,9 @@
   {% if data %}
   <h2>Results</h2>
   <p><strong>{{ data.person or 'Chart' }}</strong> - {{ data.place }} - {{ data.zodiac }}</p>
+  {% if data.ayanamsa > 0 %}
   <p>Ayanamsa: {{ "%.2f"|format(data.ayanamsa) }}°</p>
+  {% endif %}
   
   <table border="1" style="margin: 20px 0;">
     <tr><th>Planet</th><th>Position</th></tr>
