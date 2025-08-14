@@ -146,37 +146,84 @@ def julian_day_utc(dt: datetime) -> float:
     JD = int(365.25 * (y + 4716)) + int(30.6001 * (m + 1)) + D + B - 1524.5
     return JD
 
-def fagan_bradley_ayanamsa(dt: datetime) -> float:
-    """Calculate ayanamsa calibrated to match professional software exactly."""
+def calculate_ayanamsa(dt: datetime, ayanamsa_type: str = "lahiri") -> float:
+    """Calculate ayanamsa using proper astronomical methods."""
     if dt.tzinfo is None:
         dt_utc = dt.replace(tzinfo=_tz.utc)
     else:
         dt_utc = dt.astimezone(_tz.utc)
     
-    # Direct calibration approach for exact match
-    jd = julian_day_utc(dt_utc)
+    # Try Swiss Ephemeris first (most accurate)
+    try:
+        import swisseph as swe
+        jd = swe.julday(
+            dt_utc.year, dt_utc.month, dt_utc.day,
+            dt_utc.hour + dt_utc.minute/60.0 + dt_utc.second/3600.0,
+            swe.GREG_CAL,
+        )
+        
+        if ayanamsa_type.lower() == "lahiri":
+            swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
+        else:  # fagan-bradley
+            swe.set_sid_mode(swe.SIDM_FAGAN_BRADLEY, 0, 0)
+            
+        ay = float(swe.get_ayanamsa_ut(jd))
+        return normalize_deg(ay)
+        
+    except (ImportError, Exception):
+        # Fallback calculations
+        jd = julian_day_utc(dt_utc)
+        
+        if ayanamsa_type.lower() == "lahiri":
+            return calculate_lahiri_ayanamsa(jd)
+        else:
+            return calculate_fagan_bradley_ayanamsa(jd)
+
+def calculate_lahiri_ayanamsa(jd: float) -> float:
+    """Calculate Lahiri (Chitrapaksha) Ayanamsa."""
+    # Lahiri ayanamsa: Spica at exactly 0° Libra (180°)
+    # Zero point: when tropical and sidereal zodiacs coincided around 285 CE
     
-    # For July 2, 1962 23:33, we need ayanamsa ≈ 24.40° to get:
-    # Sun at Gemini 16.34° (your expected result)
+    # Calculate time from reference epoch
+    # J1900.0 = JD 2415020.0 (Jan 0.5, 1900 UT)
+    T = (jd - 2415020.0) / 36525.0  # Centuries from 1900.0
     
-    # Calculate years from a reference epoch
-    j2000 = 2451545.0  # Jan 1, 2000 12:00 TT
-    years_from_j2000 = (jd - j2000) / 365.25
+    # Lahiri formula (official Indian Government calculation)
+    # Base value at 1900.0: 22°27'38.48" = 22.460689°
+    base_1900 = 22.460689
     
-    # Calibrated base value for J2000.0
-    # Working backwards: if July 2, 1962 needs 24.40°, then J2000.0 base should be:
-    # 24.40° + (37.5 years * 50.29"/year / 3600) = 24.40° + 0.524° = 24.924°
-    base_j2000_calibrated = 24.924
-    
-    # Standard precession rate
-    annual_rate = 50.29 / 3600.0  # degrees per year
+    # Annual rate: 50.2388475"/year
+    annual_rate = 50.2388475 / 3600.0  # Convert to degrees
     
     # Calculate ayanamsa
-    ay = base_j2000_calibrated - (years_from_j2000 * annual_rate)
-    
-    print(f"DEBUG: Calibrated ayanamsa = {ay:.6f}°")
+    ay = base_1900 + (T * 100 * annual_rate)
     
     return normalize_deg(ay)
+
+def calculate_fagan_bradley_ayanamsa(jd: float) -> float:
+    """Calculate Fagan-Bradley Ayanamsa (original method)."""
+    # Fagan-Bradley: Based on Aldebaran at 15° Taurus and Antares at 15° Scorpio
+    # Zero point calculated from Babylonian observations
+    
+    # Calculate time from J1950.0
+    T = (jd - 2433282.5) / 365.25  # Years from 1950.0
+    
+    # Original Fagan-Bradley parameters
+    # Base at 1950.0: 24°02'31.36" = 24.042044°
+    base_1950 = 24.042044
+    
+    # Annual rate: 50.290966"/year  
+    annual_rate = 50.290966 / 3600.0  # Convert to degrees
+    
+    # Calculate ayanamsa
+    ay = base_1950 + (T * annual_rate)
+    
+    return normalize_deg(ay)
+
+# Keep the old function name for compatibility
+def fagan_bradley_ayanamsa(dt: datetime) -> float:
+    """Backward compatibility wrapper."""
+    return calculate_ayanamsa(dt, "lahiri")  # Default to Lahiri since it's more common
 
 def planetary_longitudes(dt: datetime, helio: bool = False) -> dict:
     """Calculate planetary longitudes (true geocentric for planets)."""
@@ -410,8 +457,8 @@ def chart():
         
         # Apply sidereal correction if needed
         if zodiac == "sidereal":
-            ayanamsa = fagan_bradley_ayanamsa(dt)
-            print(f"DEBUG: Calculated ayanamsa = {ayanamsa:.6f}°")  # Debug output
+            # Try Lahiri first (most common in professional software)
+            ayanamsa = calculate_ayanamsa(dt, "lahiri")
             longitudes = {name: normalize_deg(lon - ayanamsa) for name, lon in longs_trop.items()}
         else:
             ayanamsa = 0.0
