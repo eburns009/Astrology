@@ -552,8 +552,9 @@ def about():
         <li><b>Comprehensive aspects:</b> 13 configurable types</li>
         <li><b>Fixed stars:</b> 16 major stars with conjunctions</li>
         <li><b>Global atlas:</b> GeoNames.org integration</li>
+        <li><b>Prenatal charts:</b> Hermetic Rule calculations</li>
     </ul>
-    <p><a href="/">← Back to Chart</a></p>
+    <p><a href="/">Back to Chart</a></p>
     </body>
     </html>
     """
