@@ -1,33 +1,818 @@
-Astrology Chart — Clean
-Person
-{{ defaults.person }}
-Place (label only)
-{{ defaults.place }}
-Local date & time
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>New Astrology Emerging — Switchboard</title>
+  <style>
+    :root { 
+      --bg: #ffffff; 
+      --card: #ffffff; 
+      --ink: #1f2937; 
+      --muted: #6b7280; 
+      --accent: #2563eb; 
+      --border: #e5e7eb;
+      --shadow: 0 6px 20px rgba(0,0,0,.08);
+    }
+    
+    html, body { 
+      background: var(--bg); 
+      color: var(--ink); 
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    
+    .wrap { 
+      max-width: 1200px; 
+      margin: 24px auto; 
+      padding: 0 16px; 
+    }
+    
+    .card { 
+      background: var(--card); 
+      border-radius: 16px; 
+      padding: 20px; 
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
+    }
+    
+    h1 { 
+      font-weight: 700; 
+      letter-spacing: 0.2px; 
+      margin: 0 0 8px 0;
+      font-size: 28px;
+    }
+    
+    .lead { 
+      margin: 0 0 20px 0; 
+      color: var(--muted); 
+      font-size: 16px;
+    }
+    
+    /* Form Styles */
+    label { 
+      display: block; 
+      margin: 12px 0 6px; 
+      color: var(--muted); 
+      font-size: 14px; 
+      font-weight: 500;
+    }
+    
+    input, select { 
+      background: #ffffff; 
+      color: #111827; 
+      border: 1px solid var(--border); 
+      border-radius: 8px; 
+      padding: 10px 12px; 
+      width: 100%;
+      box-sizing: border-box;
+      font-size: 14px;
+    }
+    
+    input:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+    
+    .form-row { 
+      display: grid; 
+      gap: 16px; 
+      margin-bottom: 16px;
+    }
+    
+    .form-row.cols-2 { grid-template-columns: 1fr 1fr; }
+    .form-row.cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .form-row.cols-4 { grid-template-columns: repeat(4, 1fr); }
+    
+    /* Buttons */
+    .actions { 
+      display: flex; 
+      gap: 12px; 
+      margin-top: 20px;
+      flex-wrap: wrap;
+    }
+    
+    button { 
+      background: var(--accent); 
+      color: #fff; 
+      border: 0; 
+      padding: 12px 20px; 
+      border-radius: 8px; 
+      font-weight: 600; 
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.2s;
+    }
+    
+    button:hover {
+      background: #1d4ed8;
+    }
+    
+    .btn-secondary {
+      background: #6b7280;
+    }
+    
+    .btn-secondary:hover {
+      background: #4b5563;
+    }
+    
+    .pill { 
+      display: inline-flex; 
+      align-items: center; 
+      gap: 6px; 
+      padding: 6px 12px; 
+      border-radius: 20px; 
+      border: 1px solid var(--border); 
+      background: #f8fafc; 
+      color: var(--ink); 
+      font-size: 12px; 
+      cursor: pointer;
+      text-decoration: none;
+      transition: background-color 0.2s;
+    }
+    
+    .pill:hover { 
+      background: #e2e8f0; 
+    }
+    
+    /* Chart Layout */
+    .chart-grid { 
+      display: grid; 
+      grid-template-columns: 500px 1fr; 
+      gap: 20px;
+      align-items: start;
+    }
+    
+    .chart-canvas {
+      background: #ffffff; 
+      border: 1px solid var(--border); 
+      border-radius: 12px; 
+      width: 100%; 
+      height: auto;
+    }
+    
+    /* Tables */
+    table { 
+      width: 100%; 
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    
+    th, td { 
+      text-align: left; 
+      padding: 8px 6px; 
+      border-bottom: 1px solid #f1f5f9;
+    }
+    
+    th {
+      font-weight: 600;
+      color: var(--muted);
+      border-bottom: 2px solid var(--border);
+    }
+    
+    .section-title { 
+      margin: 20px 0 12px 0; 
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--ink);
+    }
+    
+    .section-title:first-child {
+      margin-top: 0;
+    }
+    
+    /* Header Info */
+    .chart-header { 
+      display: flex; 
+      gap: 16px; 
+      align-items: center; 
+      font-size: 14px;
+      flex-wrap: wrap;
+    }
+    
+    .chart-header b { 
+      font-size: 16px; 
+    }
+    
+    .divider::before { 
+      content: "•"; 
+      margin: 0 8px; 
+      color: var(--muted); 
+    }
+    
+    /* Collapsible Sections */
+    details {
+      margin: 16px 0;
+    }
+    
+    summary { 
+      cursor: pointer; 
+      font-weight: 600; 
+      color: var(--muted);
+      padding: 8px 0;
+    }
+    
+    summary:hover {
+      color: var(--ink);
+    }
+    
+    /* Aspect Controls */
+    .aspect-controls {
+      margin: 8px 0;
+    }
+    
+    .aspect-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 6px 0;
+      font-size: 14px;
+    }
+    
+    .color-swatch { 
+      display: inline-block; 
+      width: 12px; 
+      height: 12px; 
+      border-radius: 3px; 
+      border: 1px solid #cbd5e1;
+    }
+    
+    .aspect-name {
+      min-width: 140px;
+    }
+    
+    .orb-input {
+      max-width: 70px;
+      margin: 0;
+    }
+    
+    /* Quick Controls */
+    .quick-controls {
+      margin: 8px 0;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    
+    .quick-controls span {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    
+    /* Tooltip */
+    .tooltip { 
+      position: fixed; 
+      z-index: 1000; 
+      background: #ffffff; 
+      color: #111827; 
+      border: 1px solid var(--border); 
+      border-radius: 6px; 
+      padding: 8px 10px; 
+      font-size: 12px; 
+      pointer-events: none; 
+      box-shadow: 0 8px 24px rgba(0,0,0,.15);
+      max-width: 200px;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+      .chart-grid {
+        grid-template-columns: 1fr;
+      }
+      
+      .form-row.cols-2,
+      .form-row.cols-3,
+      .form-row.cols-4 {
+        grid-template-columns: 1fr;
+      }
+      
+      .actions {
+        flex-direction: column;
+      }
+      
+      .chart-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+    }
+    
+    /* Print Styles */
+    @media print {
+      body { 
+        -webkit-print-color-adjust: exact; 
+        print-color-adjust: exact; 
+      }
+      
+      .card { 
+        box-shadow: none; 
+      }
+      
+      form, .actions, details { 
+        display: none !important; 
+      }
+      
+      .chart-canvas { 
+        width: 7.0in !important; 
+        height: 7.0in !important; 
+      }
+    }
+    
+    @page { 
+      size: letter; 
+      margin: 0.5in; 
+    }
+  </style>
+</head>
 
-mm/dd/yyyy, --:-- --
-Timezone
+<body>
+  <div class="wrap">
+    <h1>New Astrology Emerging — Switchboard</h1>
+    <p class="lead">Professional birth charts with equal houses, custom aspects, and precise sidereal calculations.</p>
+    
+    <div class="card">
+      <form method="GET" action="/chart">
+        <div class="form-row cols-2">
+          <div>
+            <label>Name (optional)</label>
+            <input name="person" placeholder="Full name" value="{{ data.person if data else '' }}">
+          </div>
+          <div>
+            <label>Birthplace (city, country)</label>
+            <input name="place" placeholder="Boulder, CO" value="{{ data.place if data else '' }}">
+          </div>
+        </div>
 
-America/New_York
-Latitude
-{{ defaults.lat }}
-Longitude
-{{ defaults.lon }}
-Zodiac
+        <div class="form-row cols-2">
+          <div>
+            <label>Local birth date & time</label>
+            <input type="datetime-local" name="dt" value="{{ default_dt }}">
+          </div>
+          <div>
+            <label>Timezone</label>
+            <select name="tz">
+              {% if data %}
+                <option value="{{ data.tz }}" selected>{{ data.tz }}</option>
+              {% endif %}
+              <option value="auto" {% if (not data) or (default_tz=='auto') %}selected{% endif %}>Auto (by birthplace)</option>
+              <option value="UTC">UTC</option>
+              <option value="America/New_York">America/New_York</option>
+              <option value="America/Chicago">America/Chicago</option>
+              <option value="America/Denver">America/Denver</option>
+              <option value="America/Los_Angeles">America/Los_Angeles</option>
+            </select>
+          </div>
+        </div>
 
-Sidereal (Fagan/Bradley)
-Heliocentric
+        <details open>
+          <summary>Advanced Settings</summary>
+          
+          <div class="form-row cols-2">
+            <div>
+              <label>Latitude</label>
+              <input name="lat" value="{{ data.lat if data else '' }}" placeholder="40.015">
+            </div>
+            <div>
+              <label>Longitude</label>
+              <input name="lon" value="{{ data.lon if data else '' }}" placeholder="-105.270">
+            </div>
+          </div>
 
-No (geocentric)
-Compute
-{% if error %}
-Error: {{ error }}
+          <div class="form-row cols-4">
+            <div>
+              <label>Frame</label>
+              <select name="frame">
+                <option value="geo" {% if not data or data.frame=='geo' %}selected{% endif %}>Geocentric</option>
+                <option value="helio" {% if data and data.frame=='helio' %}selected{% endif %}>Heliocentric</option>
+              </select>
+            </div>
+            <div>
+              <label>Zodiac</label>
+              <select name="zodiac">
+                <option value="sidereal" {% if not data or data.zodiac=='Sidereal' %}selected{% endif %}>Sidereal (Fagan/Bradley)</option>
+                <option value="tropical" {% if data and data.zodiac=='Tropical' %}selected{% endif %}>Tropical</option>
+              </select>
+            </div>
+            <div>
+              <label>House Mode</label>
+              <select name="house_mode">
+                <option value="asc_middle" {% if (not data) or (data.get('house_mode')=='asc_middle') %}selected{% endif %}>Asc in middle</option>
+                <option value="asc_cusp" {% if data and data.get('house_mode')=='asc_cusp' %}selected{% endif %}>Asc on cusp</option>
+              </select>
+            </div>
+            <div>
+              <label>Direction</label>
+              <select name="house_direction">
+                <option value="counterclockwise" {% if (not data) or (data.get('house_direction')=='counterclockwise') %}selected{% endif %}>Counterclockwise</option>
+                <option value="clockwise" {% if data and data.get('house_direction')=='clockwise' %}selected{% endif %}>Clockwise</option>
+              </select>
+            </div>
+          </div>
 
-{% endif %} {% if data %}
-Positions — {{ data['zodiac'] }}
-{% for row in data['table'] %} {% endfor %}
-Body	Longitude	Decimal°
-{{ row['name'] }}	{{ row['lon_fmt'] }}	{{ row['decimal_degrees'] }}
-Ayanāṁśa: {{ data['ayanamsa'] }}
+          <details>
+            <summary>Aspects & Orbs</summary>
+            <div class="aspect-controls">
+              <div class="quick-controls">
+                <span>Quick:</span>
+                <button type="button" class="pill" id="aspectsAll">All</button>
+                <button type="button" class="pill" id="aspectsNone">None</button>
+                <button type="button" class="pill" id="aspectsDefaults">Defaults</button>
+              </div>
+              
+              {% for a in aspects %}
+              <div class="aspect-row">
+                <input type="checkbox" name="{{a.key}}_on" data-aspect="{{a.key}}" {% if a.on %}checked{% endif %}>
+                <span class="color-swatch" style="background: {{ a.color }}"></span>
+                <span class="aspect-name">{{a.name}}</span>
+                <span>orb:</span>
+                <input class="orb-input" name="{{a.key}}_orb" value="{{a.orb}}" data-default-orb="{{a.default_orb}}">
+                <span>°</span>
+              </div>
+              {% endfor %}
+            </div>
+          </details>
 
-{% endif %}
+          <details>
+            <summary>Additional Features</summary>
+            <div style="margin: 12px 0;">
+              <label style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" name="show_fixed_stars" {% if data and data.get('show_fixed_stars') %}checked{% endif %}>
+                Show fixed star conjunctions
+              </label>
+              <div style="margin: 8px 0 0 24px;">
+                <label>Orb: <input name="fixed_star_orb" value="{{ data.get('fixed_star_orb', '1.0') if data else '1.0' }}" style="width: 50px; margin-left: 4px;">°</label>
+              </div>
+            </div>
+            
+            <div style="margin: 12px 0;">
+              <label style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" name="show_prenatal" {% if data and data.get('show_prenatal') %}checked{% endif %}>
+                Calculate prenatal chart (Hermetic Rule)
+              </label>
+            </div>
+          </details>
+        </details>
+
+        <div class="actions">
+          <button type="submit">Calculate Chart</button>
+          <button type="button" class="btn-secondary" id="newChartBtn">New Chart</button>
+          <button type="button" class="btn-secondary" id="printBtn">Print Chart</button>
+          <a class="pill" href="/about">About</a>
+        </div>
+      </form>
+    </div>
+
+    {% if data %}
+    <div class="card">
+      <div class="chart-header">
+        <div><b>{{ data.person or 'Chart' }}</b></div>
+        <div class="divider">{{ data.place or 'Unknown Location' }}</div>
+        <div class="divider">{{ data.dt_disp }} ({{ data.tz }})</div>
+        <div class="divider">{{ data.zodiac }}</div>
+        <div class="divider">Lat {{ "%.2f"|format(data.lat) }}°, Lon {{ "%.2f"|format(data.lon) }}°</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="chart-grid">
+        <div>
+          <canvas id="wheel" class="chart-canvas" width="480" height="480"></canvas>
+          <div id="chartTip" class="tooltip" style="display:none"></div>
+        </div>
+        
+        <div>
+          <div class="section-title">Planetary Positions</div>
+          {% if data.zodiac == 'Sidereal' %}
+          <div style="font-size: 12px; color: var(--muted); margin-bottom: 8px;">
+            Ayanamsa: {{ "%.2f"|format(data.ayanamsa) }}°
+          </div>
+          {% endif %}
+          
+          <table>
+            <thead>
+              <tr><th>Planet</th><th>Position</th></tr>
+            </thead>
+            <tbody>
+              {% for row in data.table %}
+              <tr>
+                <td>{{ row.name }}</td>
+                <td>{{ row.lon_fmt }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          <div class="section-title">Houses (Equal)</div>
+          <table>
+            <thead>
+              <tr><th>House</th><th>Cusp</th></tr>
+            </thead>
+            <tbody>
+              {% for h in data.houses %}
+              <tr>
+                <td>{{ h.idx }}</td>
+                <td>{{ h.lon_fmt }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          {% if data.aspects %}
+          <div class="section-title">Aspects</div>
+          <table>
+            <thead>
+              <tr><th>Aspect</th><th>Planets</th><th>Orb</th></tr>
+            </thead>
+            <tbody>
+              {% for a in data.aspects %}
+              <tr>
+                <td>{{ a.type }}</td>
+                <td>{{ a.p1 }} – {{ a.p2 }}</td>
+                <td>{{ a.delta }}°</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+
+          {% if data.show_fixed_stars and data.fixed_stars %}
+          <div class="section-title">Fixed Stars</div>
+          <table>
+            <thead>
+              <tr><th>Planet</th><th>Star</th><th>Orb</th></tr>
+            </thead>
+            <tbody>
+              {% for fs in data.fixed_stars %}
+              <tr>
+                <td>{{ fs.planet }}</td>
+                <td>{{ fs.star }}</td>
+                <td>{{ fs.separation }}°</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <script>
+    // Form handling
+    (function() {
+      const form = document.querySelector('form');
+      
+      // New Chart button
+      const newBtn = document.getElementById('newChartBtn');
+      if (newBtn) {
+        newBtn.addEventListener('click', function() {
+          // Clear all form fields
+          form.reset();
+          
+          // Set defaults
+          const tzSelect = form.querySelector('select[name="tz"]');
+          if (tzSelect) tzSelect.value = 'auto';
+          
+          // Set current datetime
+          const dtInput = form.querySelector('input[name="dt"]');
+          if (dtInput) {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            dtInput.value = `${year}-${month}-${day}T${hours}:${minutes}`;
+          }
+          
+          window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+      }
+      
+      // Print button
+      const printBtn = document.getElementById('printBtn');
+      if (printBtn) {
+        printBtn.addEventListener('click', () => window.print());
+      }
+      
+      // Aspect controls
+      function setAllAspects(enabled) {
+        form.querySelectorAll('input[type="checkbox"][data-aspect]').forEach(cb => {
+          cb.checked = enabled;
+        });
+      }
+      
+      function resetAspectOrbs() {
+        form.querySelectorAll('input[data-default-orb]').forEach(input => {
+          input.value = input.getAttribute('data-default-orb');
+        });
+      }
+      
+      const allBtn = document.getElementById('aspectsAll');
+      const noneBtn = document.getElementById('aspectsNone');
+      const defaultsBtn = document.getElementById('aspectsDefaults');
+      
+      if (allBtn) allBtn.addEventListener('click', () => setAllAspects(true));
+      if (noneBtn) noneBtn.addEventListener('click', () => setAllAspects(false));
+      if (defaultsBtn) defaultsBtn.addEventListener('click', resetAspectOrbs);
+    })();
+
+    // Chart rendering (only if data exists)
+    {% if data %}
+    (function() {
+      const canvas = document.getElementById('wheel');
+      const ctx = canvas.getContext('2d');
+      const data = {{ data_json | tojson }};
+      const header = {{ chart_header | tojson }};
+      
+      const W = canvas.width, H = canvas.height;
+      const cx = W/2, cy = H/2;
+      const R = Math.min(W,H) * 0.42;
+      
+      const signGlyphs = ['♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓'];
+      const signNames = ['Aries','Taurus','Gemini','Cancer','Leo','Virgo','Libra','Scorpio','Sagittarius','Capricorn','Aquarius','Pisces'];
+      const planetGlyphs = {
+        'Sun': '☉', 'Moon': '☾', 'Mercury': '☿', 'Venus': '♀', 'Mars': '♂',
+        'Jupiter': '♃', 'Saturn': '♄', 'Uranus': '♅', 'Neptune': '♆', 'Pluto': '♇'
+      };
+      const planetColors = {
+        'Sun': '#f59e0b', 'Moon': '#9ca3af', 'Mercury': '#3b82f6', 'Venus': '#ec4899', 'Mars': '#ef4444',
+        'Jupiter': '#f59e0b', 'Saturn': '#6b7280', 'Uranus': '#06b6d4', 'Neptune': '#3b82f6', 'Pluto': '#8b5cf6'
+      };
+      
+      function deg2rad(d) { return d * Math.PI / 180; }
+      
+      function drawCircle(radius, width = 1, color = '#e5e7eb') {
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.stroke();
+      }
+      
+      function drawLine(angle, r1, r2, width = 1, color = '#e5e7eb') {
+        const a = deg2rad(angle);
+        const x1 = cx + Math.cos(a) * r1;
+        const y1 = cy + Math.sin(a) * r1;
+        const x2 = cx + Math.cos(a) * r2;
+        const y2 = cy + Math.sin(a) * r2;
+        
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.stroke();
+      }
+      
+      function drawText(text, angle, radius, font = '14px sans-serif', color = '#374151') {
+        const a = deg2rad(angle);
+        const x = cx + Math.cos(a) * radius;
+        const y = cy + Math.sin(a) * radius;
+        
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(a + Math.PI/2);
+        ctx.fillStyle = color;
+        ctx.font = font;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(text, 0, 0);
+        ctx.restore();
+      }
+      
+      // Clear canvas
+      ctx.clearRect(0, 0, W, H);
+      
+      // Draw chart structure
+      drawCircle(R, 2, '#374151');
+      drawCircle(R * 0.95, 1);
+      drawCircle(R * 0.85, 1);
+      
+      const rotation = data.rotationDeg;
+      
+      // Draw zodiac signs
+      for (let i = 0; i < 12; i++) {
+        const angle = -(i * 30 + 15) + rotation;
+        drawText(signGlyphs[i], angle, R * 1.05, '18px sans-serif', '#374151');
+      }
+      
+      // Draw degree marks
+      for (let d = 0; d < 360; d += 5) {
+        const major = (d % 30 === 0);
+        const angle = -d + rotation;
+        drawLine(angle, R, R * (major ? 0.92 : 0.96), major ? 2 : 1, major ? '#6b7280' : '#e5e7eb');
+      }
+      
+      // Draw house cusps
+      data.cusps.forEach((cusp, i) => {
+        const angle = -cusp + rotation;
+        drawLine(angle, 0, R, 1.5, '#9ca3af');
+        drawText(String(i + 1), angle - 15, R * 0.88, '12px sans-serif', '#6b7280');
+      });
+      
+      // Calculate planet positions
+      const positions = {};
+      data.rows.forEach(row => {
+        const angle = deg2rad(-(row.lon) + rotation);
+        const radius = R * 0.78;
+        positions[row.name] = {
+          x: cx + Math.cos(angle) * radius,
+          y: cy + Math.sin(angle) * radius,
+          lon: row.lon
+        };
+      });
+      
+      // Draw aspects
+      const aspectColors = {
+        'Conjunction': '#2563eb', 'Opposition': '#ef4444', 'Trine': '#10b981',
+        'Square': '#ef4444', 'Sextile': '#8b5cf6', 'Quintile': '#f59e0b'
+      };
+      
+      data.aspects.forEach(aspect => {
+        const p1 = positions[aspect.p1];
+        const p2 = positions[aspect.p2];
+        if (p1 && p2) {
+          ctx.beginPath();
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.strokeStyle = aspectColors[aspect.type] || '#9ca3af';
+          ctx.lineWidth = 1.5;
+          ctx.globalAlpha = 0.7;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+      });
+      
+      // Draw planets
+      data.rows.forEach(row => {
+        const pos = positions[row.name];
+        const color = planetColors[row.name] || '#6b7280';
+        const glyph = planetGlyphs[row.name] || row.name[0];
+        
+        // Planet circle
+        ctx.beginPath();
+        ctx.arc(pos.x, pos.y, 14, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Planet glyph
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '16px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(glyph, pos.x, pos.y);
+      });
+      
+      // Tooltip functionality
+      const tooltip = document.getElementById('chartTip');
+      
+      function showTooltip(html, x, y) {
+        tooltip.innerHTML = html;
+        tooltip.style.display = 'block';
+        tooltip.style.left = (x + 10) + 'px';
+        tooltip.style.top = (y + 10) + 'px';
+      }
+      
+      function hideTooltip() {
+        tooltip.style.display = 'none';
+      }
+      
+      canvas.addEventListener('mouseleave', hideTooltip);
+      canvas.addEventListener('mousemove', (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const y = (e.clientY - rect.top) * (canvas.height / rect.height);
+        
+        // Check for planet hover
+        let found = false;
+        data.rows.forEach(row => {
+          const pos = positions[row.name];
+          const dist = Math.hypot(x - pos.x, y - pos.y);
+          if (dist <= 16) {
+            const signIndex = Math.floor(pos.lon / 30);
+            const degrees = Math.floor(pos.lon % 30);
+            const minutes = Math.floor((pos.lon % 1) * 60);
+            
+            const html = `<b>${row.name}</b><br>${signGlyphs[signIndex]} ${signNames[signIndex]} ${degrees}°${minutes.toString().padStart(2, '0')}'`;
+            showTooltip(html, e.clientX, e.clientY);
+            found = true;
+          }
+        });
+        
+        if (!found) {
+          hideTooltip();
+        }
+      });
+    })();
+    {% endif %}
+  </script>
+</body>
+</html>
