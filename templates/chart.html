@@ -392,9 +392,9 @@
             <div>
               <label>Zodiac</label>
               <select name="zodiac">
-                <option value="sidereal" {% if not data or (data and data.zodiac and 'Lahiri' in data.zodiac) %}selected{% endif %}>Sidereal (Lahiri)</option>
-                <option value="sidereal_fb" {% if data and data.zodiac and 'Fagan-Bradley' in data.zodiac %}selected{% endif %}>Sidereal (Fagan-Bradley)</option>
-                <option value="tropical" {% if data and data.zodiac=='Tropical' %}selected{% endif %}>Tropical</option>
+                <option value="sidereal" {% if not data or (data and data.zodiac == 'Sidereal (Lahiri)') %}selected{% endif %}>Sidereal (Lahiri)</option>
+                <option value="sidereal_fb" {% if data and data.zodiac == 'Sidereal (Fagan-Bradley)' %}selected{% endif %}>Sidereal (Fagan-Bradley)</option>
+                <option value="tropical" {% if data and data.zodiac == 'Tropical' %}selected{% endif %}>Tropical</option>
               </select>
             </div>
             <div>
@@ -625,10 +625,21 @@
     // Chart rendering (only if data exists)
     {% if data %}
     (function() {
-      const canvas = document.getElementById('wheel');
-      const ctx = canvas.getContext('2d');
-      const data = {{ data_json | tojson }};
-      const header = {{ chart_header | tojson }};
+      try {
+        const canvas = document.getElementById('wheel');
+        if (!canvas) {
+          console.error('Canvas element not found');
+          return;
+        }
+        
+        const ctx = canvas.getContext('2d');
+        const data = {{ data_json | tojson }};
+        const header = {{ chart_header | tojson }};
+        
+        if (!data || !header) {
+          console.error('Chart data not available');
+          return;
+        }
       
       const W = canvas.width, H = canvas.height;
       const cx = W/2, cy = H/2;
@@ -812,6 +823,10 @@
           hideTooltip();
         }
       });
+      
+      } catch (error) {
+        console.error('Chart rendering error:', error);
+      }
     })();
     {% endif %}
   </script>
